@@ -144,15 +144,15 @@ func _forward_canvas_force_draw_over_viewport(overlay: Control) -> void:
 			continue
 		var col := Color.html(str(p.color))
 		for path in p.selected:
-			var node := core.root.get_node_or_null(str(path))
+			var node: Node = core.root.get_node_or_null(str(path))
 			if not (node is CanvasItem):
 				continue
-			var rect := Rect2(-12, -12, 24, 24)
+			var rect: Rect2 = Rect2(-12, -12, 24, 24)
 			if node is Control:
-				rect = Rect2(Vector2.ZERO, node.size)
+				rect = Rect2(Vector2.ZERO, (node as Control).size)
 			elif node.has_method("get_rect"):
-				rect = node.get_rect()
-			var xf: Transform2D = vp.global_canvas_transform * node.get_global_transform_with_canvas()
+				rect = node.call("get_rect")
+			var xf: Transform2D = vp.global_canvas_transform * (node as CanvasItem).get_global_transform_with_canvas()
 			var pts := PackedVector2Array([
 				xf * rect.position,
 				xf * Vector2(rect.end.x, rect.position.y),

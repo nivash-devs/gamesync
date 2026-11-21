@@ -215,7 +215,7 @@ func _make(cls: String, inst: String) -> Node:
 
 ## Lets the editor know the scene changed so it can be saved.
 func _touched() -> void:
-	if Engine.is_editor_hint():
+	if Engine.is_editor_hint() and Engine.has_singleton("EditorInterface"):
 		var ei = Engine.get_singleton("EditorInterface")
 		if ei and ei.has_method("mark_scene_as_unsaved"):
 			ei.mark_scene_as_unsaved()
@@ -228,8 +228,8 @@ func _push_local_changes() -> void:
 	# Removed nodes: only send the top one, the server drops its children.
 	for p in snap.keys():
 		if not now.has(p):
-			var cut := p.rfind("/")
-			var parent_p := "." if cut == -1 else p.substr(0, cut)
+			var cut: int = str(p).rfind("/")
+			var parent_p: String = "." if cut == -1 else str(p).substr(0, cut)
 			if parent_p == "." or now.has(parent_p):
 				_send({"t": "remove", "scene": scene_key, "path": p})
 	# Added nodes (or class swapped), parents first.
