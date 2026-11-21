@@ -1,0 +1,8 @@
+config_version=5
+
+[application]
+config/name="gamesync-test"
+run/main_scene="res://main.tscn"
+
+[editor_plugins]
+enabled=PackedStringArray("res://addons/gamesync/plugin.cfg")
