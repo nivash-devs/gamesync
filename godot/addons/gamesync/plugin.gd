@@ -24,6 +24,27 @@ func _enter_tree() -> void:
 	scene_changed.connect(_on_scene_changed)
 	get_editor_interface().get_selection().selection_changed.connect(_on_selection)
 	set_force_draw_over_forwarding_enabled()
+	_auto_join.call_deferred()
+
+
+## Optional: if the project sets gamesync/room and gamesync/name,
+## open the main scene and join right away.
+func _auto_join() -> void:
+	var room := str(ProjectSettings.get_setting("gamesync/room", ""))
+	var who := str(ProjectSettings.get_setting("gamesync/name", ""))
+	if room == "" or who == "":
+		return
+	await get_tree().create_timer(1.5).timeout
+	var main_scene := str(ProjectSettings.get_setting("application/run/main_scene", ""))
+	if main_scene != "" and get_editor_interface().get_edited_scene_root() == null:
+		get_editor_interface().open_scene_from_path(main_scene)
+		await get_tree().process_frame
+	room_edit.text = room
+	name_edit.text = who
+	var url := str(ProjectSettings.get_setting("gamesync/server", ""))
+	if url != "":
+		url_edit.text = url
+	_on_connect_pressed()
 
 
 func _exit_tree() -> void:
