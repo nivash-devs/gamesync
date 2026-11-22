@@ -60,7 +60,7 @@ func _run() -> void:
 	var b = make_friend("Arjun", b_root)
 	await wait_for(func(): return b.synced, "B joins")
 	check(b_root.get_node_or_null("Player") is Sprite2D, "B gets Player as a Sprite2D")
-	check(b_root.get_node("Player").position == Vector2(10, 20), "B gets Player's position")
+	check(b_root.get_node("Player").position == Vector2(200, 150), "B gets Player's position")
 
 	# Move on A, see it on B.
 	a_root.get_node("Player").position = Vector2(100, 50)
