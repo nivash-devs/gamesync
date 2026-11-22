@@ -43,6 +43,7 @@ var _first_try_ms := 0
 var _retry_at := 0
 var _last_ping := 0
 var _last_doc_poll := 0
+var _reconnecting := false
 var msg_count := 0            # goes up with every message from the room, so the UI knows when to redraw
 
 
@@ -87,6 +88,7 @@ func _open_socket() -> void:
 func disconnect_from() -> void:
 	_url = ""
 	_retry_at = 0
+	_reconnecting = false
 	ws.close()
 	_joined = false
 	synced = false
@@ -153,15 +155,28 @@ func poll() -> void:
 			_send({"t": "join", "room": room, "name": my_name, "create": _create})
 		elif st == WebSocketPeer.STATE_CLOSED:
 			var never_joined := not _joined
-			if _joined or synced:
-				status_changed.emit("Disconnected")
-			# Couldn't reach the server yet: it may be waking up. Keep trying for a bit.
-			if never_joined and _url != "" and Time.get_ticks_msec() - _first_try_ms < WAKE_TIMEOUT_MS:
-				_retry_at = Time.get_ticks_msec() + 3000
-				status_changed.emit("Waking up the server, this can take a minute...")
+			var now_ms := Time.get_ticks_msec()
+			if _joined and _url != "":
+				# We were in the room and lost it (server restart, Wi-Fi blip).
+				# Rejoin the same room; whoever gets back first re-seeds it.
+				_reconnecting = true
+				_create = false
+				_first_try_ms = now_ms
+				_retry_at = now_ms + 1000
+				status_changed.emit("Connection lost, reconnecting...")
+			elif never_joined and _url != "" and now_ms - _first_try_ms < WAKE_TIMEOUT_MS:
+				# Couldn't reach the server yet: it may be waking up or restarting.
+				_retry_at = now_ms + 3000
+				if _reconnecting:
+					status_changed.emit("Connection lost, reconnecting...")
+				else:
+					status_changed.emit("Waking up the server, this can take a minute...")
 			elif never_joined and _url != "":
 				_url = ""
+				_reconnecting = false
 				status_changed.emit("Couldn't reach the server. Check your internet and try again.")
+			elif _joined or synced:
+				status_changed.emit("Disconnected")
 			_joined = false
 			synced = false
 			peers = []
@@ -249,6 +264,7 @@ func _on_msg(m: Dictionary) -> void:
 		"welcome":
 			_joined = true
 			_create = false
+			_reconnecting = false
 			my_id = int(m.id)
 			my_color = Color.html(str(m.color))
 			status_changed.emit("Connected to room " + room)
