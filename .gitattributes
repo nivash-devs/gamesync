@@ -1,0 +1,5 @@
+server/ export-ignore
+tests/ export-ignore
+host.ps1 export-ignore
+HOST.bat export-ignore
+.gitattributes export-ignore

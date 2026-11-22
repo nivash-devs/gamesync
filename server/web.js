@@ -16,7 +16,7 @@ function pluginDir() {
 function pluginFiles() {
   const dir = pluginDir();
   return fs.readdirSync(dir)
-    .filter((f) => f.endsWith(".gd") || f === "plugin.cfg")
+    .filter((f) => f.endsWith(".gd") || f === "plugin.cfg" || f === "LICENSE" || f === "README.md")
     .sort()
     .map((f) => ({ name: "addons/gamesync/" + f, data: fs.readFileSync(path.join(dir, f)) }));
 }

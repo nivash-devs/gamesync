@@ -290,7 +290,7 @@ func _apply_state(nodes: Dictionary) -> void:
 		if p != "." and not nodes.has(p) and is_instance_valid(root.get_node_or_null(p)):
 			_apply_remove(p)
 	var paths: Array = nodes.keys()
-	paths.sort_custom(func(a, b): return _depth(a) < _depth(b))
+	paths.sort_custom(_by_depth)
 	for p in paths:
 		var n: Dictionary = nodes[p]
 		_apply_add(p, str(n.cls), str(n.get("inst", "")), n.props)
@@ -378,7 +378,7 @@ func _push_local_changes() -> void:
 	for p in now.keys():
 		if not snap.has(p) or snap[p].cls != now[p].cls or snap[p].inst != now[p].inst:
 			added.append(p)
-	added.sort_custom(func(a, b): return _depth(a) < _depth(b))
+	added.sort_custom(_by_depth)
 	for p in added:
 		if snap.has(p):
 			_send({"t": "remove", "scene": scene_key, "path": p})
@@ -424,6 +424,11 @@ func _props(n: Node) -> Dictionary:
 			if e != null:
 				out[k] = e
 	return out
+
+
+# A plain method (not a lambda) so sorting also works in Godot 4.2.
+func _by_depth(a, b) -> bool:
+	return _depth(a) < _depth(b)
 
 
 static func _depth(p: String) -> int:
