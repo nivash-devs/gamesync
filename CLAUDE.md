@@ -46,7 +46,7 @@ addons/gamesync/  ── WebSocket ──>  server/server.js  <── auto-deplo
 
 ## Hosting
 
-- Render free web service `gamesync`, URL `https://gamesync-yggk.onrender.com`, region Oregon,
+- Render free web service `gamesync`, URL `https://gamesync-yggk.onrender.com`, region Singapore,
   root directory `server/`, build `npm install`, start `npm start`, plan Free ($0). Auto-deploys
   on push to `main`. Sleeps after 15 min idle; first connect can take ~1 min (plugin retries).
 - If any service asks for a card or a paid plan, stop and ask the owner first.
