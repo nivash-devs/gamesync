@@ -13,9 +13,11 @@ const PROPS := [
 ]
 
 const FileSync := preload("res://addons/gamesync/file_sync.gd")
+const DocSync := preload("res://addons/gamesync/doc_sync.gd")
 
 var ws := WebSocketPeer.new()
 var files = FileSync.new()
+var doc = DocSync.new()
 var share_files := true
 var root: Node = null
 var scene_key := ""
@@ -43,6 +45,9 @@ func connect_to(url: String, room_code: String, display_name: String) -> void:
 	ws.outbound_buffer_size = 16 << 20
 	files.reset()
 	files.send = _send
+	doc.send = _send
+	doc.path = ""
+	doc.rev = -1
 	var err := ws.connect_to_url(url)
 	status_changed.emit("Connecting..." if err == OK else "Bad server address")
 
@@ -125,6 +130,8 @@ func poll() -> void:
 			_on_msg(parsed)
 	if synced and is_instance_valid(root):
 		_push_local_changes()
+	if is_live():
+		doc.poll()
 	var now_ms := Time.get_ticks_msec()
 	if share_files and is_live() and now_ms - _last_tick > 1000:
 		_last_tick = now_ms
@@ -140,7 +147,23 @@ func _update_live_scenes() -> void:
 		var s := str(p.get("scene", ""))
 		if s != "":
 			live.append(s.trim_prefix("res://"))
+		var d = p.get("docs", [])
+		if d is Array:
+			live.append_array(d)
+	if doc.path != "":
+		live.append(doc.path)
 	files.skip_paths = live
+
+
+## Start live-editing a script. rel_path is project-relative ("player.gd").
+func open_doc(rel_path: String) -> void:
+	if rel_path == doc.path:
+		return
+	if rel_path == "":
+		doc.close()
+	elif is_live():
+		doc.open(rel_path)
+	_update_live_scenes()
 
 
 ## Re-ask the room for the open scene, e.g. after new files arrived.
@@ -182,6 +205,8 @@ func _on_msg(m: Dictionary) -> void:
 		"fstate", "file", "fdel":
 			if share_files:
 				files.on_msg(m)
+		"dstate", "dack", "dop":
+			doc.on_msg(m)
 		"state":
 			if m.scene != scene_key or root == null:
 				return

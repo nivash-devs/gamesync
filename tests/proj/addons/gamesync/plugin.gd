@@ -4,6 +4,7 @@ extends EditorPlugin
 ## and friends' selections drawn in the 2D view in their color.
 
 const SyncCore := preload("res://addons/gamesync/sync_core.gd")
+const OT := preload("res://addons/gamesync/ot.gd")
 
 var core
 var dock: VBoxContainer
@@ -15,6 +16,7 @@ var status_label: Label
 var file_label: Label
 var peer_list: ItemList
 var _resync_pending := false
+var _code_edit: CodeEdit = null
 
 
 func _enter_tree() -> void:
@@ -23,6 +25,8 @@ func _enter_tree() -> void:
 	core.peers_changed.connect(_on_peers)
 	core.files.files_changed.connect(_on_files_changed)
 	core.files.status.connect(_on_file_status)
+	core.doc.get_text = _editor_text
+	core.doc.set_text = _apply_remote_text
 	get_editor_interface().get_resource_filesystem().filesystem_changed.connect(_on_filesystem_changed)
 	_build_dock()
 	add_control_to_dock(DOCK_SLOT_RIGHT_UL, dock)
@@ -65,9 +69,68 @@ func _exit_tree() -> void:
 func _process(_delta: float) -> void:
 	if core == null:
 		return
+	if core.is_live():
+		_track_script_editor()
 	core.poll()
 	if core.is_live():
 		update_overlays()
+
+
+## Follow whichever script is open in the script editor and live-edit it.
+func _track_script_editor() -> void:
+	var se := get_editor_interface().get_script_editor()
+	var scr: Script = se.get_current_script() if se else null
+	var ed = se.get_current_editor() if se else null
+	var ce: CodeEdit = null
+	if ed and ed.has_method("get_base_editor"):
+		ce = ed.get_base_editor() as CodeEdit
+	var rel := ""
+	if scr and ce and scr.resource_path.begins_with("res://") and not scr.resource_path.contains("::"):
+		rel = scr.resource_path.trim_prefix("res://")
+	if rel != core.doc.path:
+		_code_edit = ce
+		core.open_doc(rel)
+	else:
+		_code_edit = ce
+
+
+func _editor_text() -> String:
+	if is_instance_valid(_code_edit):
+		return _code_edit.text
+	return core.doc.last_text
+
+
+## A friend typed: update the editor without throwing your cursor around.
+func _apply_remote_text(new_text: String, op: Array) -> void:
+	var ce := _code_edit
+	if not is_instance_valid(ce):
+		return
+	var old := ce.text
+	var off := _offset_of(old, ce.get_caret_line(), ce.get_caret_column())
+	var new_off := OT.map_offset(off, op)
+	var scroll := ce.scroll_vertical
+	ce.text = new_text
+	var lc := _line_col_of(new_text, new_off)
+	ce.set_caret_line(lc[0], false)
+	ce.set_caret_column(lc[1], false)
+	ce.scroll_vertical = scroll
+
+
+static func _offset_of(text: String, line: int, col: int) -> int:
+	var lines := text.split("\n")
+	var off := 0
+	for i in mini(line, lines.size()):
+		off += lines[i].length() + 1
+	return off + col
+
+
+static func _line_col_of(text: String, off: int) -> Array:
+	var lines := text.split("\n")
+	var line := 0
+	while line < lines.size() - 1 and off > lines[line].length():
+		off -= lines[line].length() + 1
+		line += 1
+	return [line, mini(off, lines[line].length())]
 
 
 func _build_dock() -> void:
@@ -185,6 +248,8 @@ func _on_peers() -> void:
 			line += "  ·  " + str(p.scene).get_file()
 		if p.selected is Array and not p.selected.is_empty():
 			line += "  ·  " + str(p.selected[0]).get_file()
+		if p.get("docs") is Array and not p.docs.is_empty():
+			line += "  ·  editing " + str(p.docs[0]).get_file()
 		var i := peer_list.add_item(line)
 		peer_list.set_item_custom_fg_color(i, Color.html(str(p.color)))
 

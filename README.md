@@ -28,13 +28,17 @@ Only share codes with people you trust: they can change your project's files.
   Not shared: `.godot/`, `addons/`, `project.godot`.
 - When you join, the room's files replace yours. Yours are backed up to
   `user://gamesync_backup` first.
-- Who's online and what each person has selected (outlined in their color).
+- Scripts, live: open the same script and type at the same time, like Google Docs.
+  Edits merge with operational transformation, so nobody's typing gets lost.
+- Who's online, what each person has selected (outlined in their color),
+  and which script they're editing.
 
 ## Tests
 
 ```
-cd server && node test_server.js
+cd server && node test_ot.js && node test_server.js
 PORT=8799 node server.js     # in another window
 godot --headless --path tests/proj --script res://test_sync.gd
 godot --headless --path tests/proj --script res://test_files.gd
+godot --headless --path tests/proj --script res://test_docs.gd
 ```
