@@ -88,6 +88,11 @@ function handle(peer, msg) {
 
   if (msg.t === "join") {
     if (peer.room || !isStr(msg.room, 64) || !isStr(msg.name, 40)) return;
+    // "Create room" picks a random code; if it's somehow taken, the client picks another.
+    if (msg.create === true && rooms.has(msg.room) && rooms.get(msg.room).peers.size > 0) {
+      send(peer.ws, { t: "error", code: "room_taken" });
+      return;
+    }
     peer.roomCode = msg.room;
     peer.room = getRoom(msg.room);
     peer.name = msg.name;
@@ -102,6 +107,10 @@ function handle(peer, msg) {
   if (!room) return;
 
   switch (msg.t) {
+    case "ping":
+      // Keeps free hosting awake while someone is connected.
+      send(peer.ws, { t: "pong" });
+      break;
     case "hello": {
       // Peer opened a scene. Reply with what the room has for it (or null).
       if (!isStr(msg.scene)) return;

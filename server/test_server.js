@@ -105,6 +105,24 @@ const S = "res://main.tscn";
   const del = await b.next("fdel");
   check(del && rooms.get("r1").files.size === 0 && rooms.get("r1").bytes === 0, "delete reaches B and frees space");
 
+  // Create room: a taken code is refused, a free one works.
+  const x = await client("Creator", "r1");   // r1 already has people, but plain join is fine
+  check(!!(await x.next("welcome")), "joining an existing room by code works");
+  const y = new WebSocket(`ws://127.0.0.1:${server.address().port}`);
+  const yin = [];
+  y.on("message", (dd) => yin.push(JSON.parse(dd.toString())));
+  await new Promise((r) => y.on("open", r));
+  y.send(JSON.stringify({ t: "join", room: "r1", name: "Y", create: true }));
+  await new Promise((r) => setTimeout(r, 80));
+  check(yin.some((m) => m.t === "error" && m.code === "room_taken"), "creating a room with a taken code is refused");
+  y.send(JSON.stringify({ t: "join", room: "FRESH1", name: "Y", create: true }));
+  await new Promise((r) => setTimeout(r, 80));
+  check(yin.some((m) => m.t === "welcome"), "creating a room with a free code works");
+  y.send(JSON.stringify({ t: "ping" }));
+  await new Promise((r) => setTimeout(r, 50));
+  check(yin.some((m) => m.t === "pong"), "ping gets a pong");
+  y.close(); x.ws.close();
+
   // Leaving.
   b.ws.close();
   let p2;

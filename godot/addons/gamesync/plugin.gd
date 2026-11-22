@@ -8,10 +8,16 @@ const OT := preload("res://addons/gamesync/ot.gd")
 
 var core
 var dock: VBoxContainer
+## The GameSync server everyone uses unless they pick their own.
+const DEFAULT_SERVER := "ws://localhost:8787"
+
 var url_edit: LineEdit
 var room_edit: LineEdit
 var name_edit: LineEdit
-var connect_btn: Button
+var own_server: CheckButton
+var lobby: VBoxContainer
+var room_box: VBoxContainer
+var code_label: Label
 var status_label: Label
 var file_label: Label
 var peer_list: ItemList
@@ -35,7 +41,23 @@ func _enter_tree() -> void:
 	scene_changed.connect(_on_scene_changed)
 	get_editor_interface().get_selection().selection_changed.connect(_on_selection)
 	set_force_draw_over_forwarding_enabled()
+	_bring_dock_to_front.call_deferred()
 	_auto_join.call_deferred()
+
+
+## Docks share a slot with the Inspector. Show ours first so people find it.
+func _bring_dock_to_front() -> void:
+	await get_tree().process_frame
+	var p := dock.get_parent()
+	while p and not (p is TabContainer):
+		p = p.get_parent()
+	if p is TabContainer:
+		var tabs := p as TabContainer
+		for i in tabs.get_tab_count():
+			var c := tabs.get_tab_control(i)
+			if c == dock or c.is_ancestor_of(dock):
+				tabs.current_tab = i
+				return
 
 
 ## Optional: if the project sets gamesync/room and gamesync/name,
@@ -54,10 +76,7 @@ func _auto_join() -> void:
 		get_editor_interface().set_main_screen_editor("2D")
 	room_edit.text = room
 	name_edit.text = who
-	var url := str(ProjectSettings.get_setting("gamesync/server", ""))
-	if url != "":
-		url_edit.text = url
-	_on_connect_pressed()
+	_on_join_pressed()
 
 
 func _exit_tree() -> void:
@@ -218,15 +237,64 @@ func _build_dock() -> void:
 	dock.name = "GameSync"
 	var title := Label.new()
 	title.text = "GameSync"
+	title.add_theme_font_size_override("font_size", 18)
 	dock.add_child(title)
-	url_edit = _field("Server", "ws://localhost:8787")
-	room_edit = _field("Invite code", "")
-	room_edit.placeholder_text = "paste the code your friend sent"
-	name_edit = _field("Your name", "")
-	connect_btn = Button.new()
-	connect_btn.text = "Join"
-	connect_btn.pressed.connect(_on_connect_pressed)
-	dock.add_child(connect_btn)
+
+	# Before joining: name, Create room, or join with a code.
+	lobby = VBoxContainer.new()
+	dock.add_child(lobby)
+	name_edit = LineEdit.new()
+	name_edit.placeholder_text = "Your name"
+	name_edit.text = _saved_name()
+	lobby.add_child(name_edit)
+	var create_btn := Button.new()
+	create_btn.text = "Create room"
+	create_btn.pressed.connect(_on_create_pressed)
+	lobby.add_child(create_btn)
+	var or_label := Label.new()
+	or_label.text = "or join a friend:"
+	lobby.add_child(or_label)
+	var row := HBoxContainer.new()
+	lobby.add_child(row)
+	room_edit = LineEdit.new()
+	room_edit.placeholder_text = "Room code"
+	room_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	room_edit.text_submitted.connect(func(_t): _on_join_pressed())
+	row.add_child(room_edit)
+	var join_btn := Button.new()
+	join_btn.text = "Join"
+	join_btn.pressed.connect(_on_join_pressed)
+	row.add_child(join_btn)
+	own_server = CheckButton.new()
+	own_server.text = "Use my own server"
+	lobby.add_child(own_server)
+	url_edit = LineEdit.new()
+	url_edit.placeholder_text = "ws://localhost:8787"
+	url_edit.visible = false
+	lobby.add_child(url_edit)
+	own_server.toggled.connect(func(on): url_edit.visible = on)
+
+	# In a room: the code to share, and Leave.
+	room_box = VBoxContainer.new()
+	room_box.visible = false
+	dock.add_child(room_box)
+	code_label = Label.new()
+	code_label.add_theme_font_size_override("font_size", 22)
+	room_box.add_child(code_label)
+	var hint := Label.new()
+	hint.text = "Send this code to your friends."
+	room_box.add_child(hint)
+	var row2 := HBoxContainer.new()
+	room_box.add_child(row2)
+	var copy_btn := Button.new()
+	copy_btn.text = "Copy code"
+	copy_btn.pressed.connect(func(): DisplayServer.clipboard_set(core.room))
+	row2.add_child(copy_btn)
+	var leave_btn := Button.new()
+	leave_btn.text = "Leave"
+	leave_btn.pressed.connect(_on_leave_pressed)
+	row2.add_child(leave_btn)
+
 	status_label = Label.new()
 	status_label.text = "Not connected"
 	status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -238,31 +306,62 @@ func _build_dock() -> void:
 	peer_list.custom_minimum_size = Vector2(0, 140)
 	peer_list.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	dock.add_child(peer_list)
+	core.room_changed.connect(_show_room)
 
 
-func _field(label: String, value: String) -> LineEdit:
-	var l := Label.new()
-	l.text = label
-	dock.add_child(l)
-	var e := LineEdit.new()
-	e.text = value
-	dock.add_child(e)
-	return e
+func _server_url() -> String:
+	if own_server.button_pressed and url_edit.text.strip_edges() != "":
+		return url_edit.text.strip_edges()
+	var from_project := str(ProjectSettings.get_setting("gamesync/server", ""))
+	return from_project if from_project != "" else DEFAULT_SERVER
 
 
-func _on_connect_pressed() -> void:
-	if core.is_live() or connect_btn.text == "Leave":
-		core.disconnect_from()
-		connect_btn.text = "Join"
-		return
+func _saved_name() -> String:
+	var es := get_editor_interface().get_editor_settings()
+	return str(es.get_setting("gamesync/name")) if es.has_setting("gamesync/name") else ""
+
+
+func _ready_to_go() -> String:
 	var who := name_edit.text.strip_edges()
-	var target: Array = SyncCore.parse_invite(room_edit.text, url_edit.text.strip_edges())
-	if target[1] == "" or who == "":
-		status_label.text = "Paste an invite code and type your name"
-		return
+	if who == "":
+		status_label.text = "Type your name first"
+		return ""
+	get_editor_interface().get_editor_settings().set_setting("gamesync/name", who)
 	_on_scene_changed(get_editor_interface().get_edited_scene_root())
+	return who
+
+
+func _on_create_pressed() -> void:
+	var who := _ready_to_go()
+	if who == "":
+		return
+	var code := SyncCore.random_code()
+	core.connect_to(_server_url(), code, who, true)
+	_show_room(code)
+
+
+func _on_join_pressed() -> void:
+	var target: Array = SyncCore.parse_invite(room_edit.text, _server_url())
+	if target[1] == "":
+		status_label.text = "Type the room code your friend sent"
+		return
+	var who := _ready_to_go()
+	if who == "":
+		return
 	core.connect_to(target[0], target[1], who)
-	connect_btn.text = "Leave"
+	_show_room(target[1])
+
+
+func _show_room(code: String) -> void:
+	code_label.text = "Room  " + code
+	lobby.visible = false
+	room_box.visible = true
+
+
+func _on_leave_pressed() -> void:
+	core.disconnect_from()
+	room_box.visible = false
+	lobby.visible = true
 
 
 func _on_file_status(text: String) -> void:

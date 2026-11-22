@@ -5,6 +5,10 @@ extends RefCounted
 
 signal status_changed(text: String)
 signal peers_changed
+signal room_changed(code: String)
+
+const CODE_CHARS := "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"   # no 0/O or 1/I mix-ups
+const WAKE_TIMEOUT_MS := 100000   # free hosting can take ~1 minute to wake up
 
 const PROPS := [
 	"position", "rotation", "scale", "skew", "visible", "modulate", "self_modulate",
@@ -33,13 +37,35 @@ var _last_state := -1
 var _last_selected: Array = []
 var _file_timer := 0.0
 var _last_tick := 0
+var _url := ""
+var _create := false
+var _first_try_ms := 0
+var _retry_at := 0
+var _last_ping := 0
 
 
-func connect_to(url: String, room_code: String, display_name: String) -> void:
+static func random_code() -> String:
+	var out := ""
+	for i in 6:
+		out += CODE_CHARS[randi() % CODE_CHARS.length()]
+	return out
+
+
+## create = true: this is a brand new room (the server refuses taken codes).
+func connect_to(url: String, room_code: String, display_name: String, create := false) -> void:
 	room = room_code
 	my_name = display_name
+	_url = url
+	_create = create
+	_first_try_ms = Time.get_ticks_msec()
+	_retry_at = 0
+	_open_socket()
+
+
+func _open_socket() -> void:
 	_joined = false
 	synced = false
+	_last_state = -1
 	ws = WebSocketPeer.new()
 	ws.inbound_buffer_size = 16 << 20
 	ws.outbound_buffer_size = 16 << 20
@@ -48,11 +74,17 @@ func connect_to(url: String, room_code: String, display_name: String) -> void:
 	doc.send = _send
 	doc.path = ""
 	doc.rev = -1
-	var err := ws.connect_to_url(url)
-	status_changed.emit("Connecting..." if err == OK else "Bad server address")
+	var err := ws.connect_to_url(_url)
+	if err != OK:
+		_url = ""
+		status_changed.emit("Bad server address")
+	elif Time.get_ticks_msec() - _first_try_ms < 1000:
+		status_changed.emit("Connecting...")
 
 
 func disconnect_from() -> void:
+	_url = ""
+	_retry_at = 0
 	ws.close()
 	_joined = false
 	synced = false
@@ -80,7 +112,7 @@ static func parse_invite(text: String, default_url: String) -> Array:
 	var cut := t.rfind("/")
 	if cut == -1:
 		if scheme == "":
-			return [default_url, t]
+			return [default_url, t.to_upper()]
 		return ["", ""]
 	var host := t.substr(0, cut)
 	var room := t.substr(cut + 1)
@@ -116,10 +148,18 @@ func poll() -> void:
 	if st != _last_state:
 		_last_state = st
 		if st == WebSocketPeer.STATE_OPEN:
-			_send({"t": "join", "room": room, "name": my_name})
+			_send({"t": "join", "room": room, "name": my_name, "create": _create})
 		elif st == WebSocketPeer.STATE_CLOSED:
+			var never_joined := not _joined
 			if _joined or synced:
 				status_changed.emit("Disconnected")
+			# Couldn't reach the server yet: it may be waking up. Keep trying for a bit.
+			if never_joined and _url != "" and Time.get_ticks_msec() - _first_try_ms < WAKE_TIMEOUT_MS:
+				_retry_at = Time.get_ticks_msec() + 3000
+				status_changed.emit("Waking up the server, this can take a minute...")
+			elif never_joined and _url != "":
+				_url = ""
+				status_changed.emit("Couldn't reach the server. Check your internet and try again.")
 			_joined = false
 			synced = false
 			peers = []
@@ -128,10 +168,17 @@ func poll() -> void:
 		var parsed = JSON.parse_string(ws.get_packet().get_string_from_utf8())
 		if parsed is Dictionary:
 			_on_msg(parsed)
+	if _retry_at > 0 and Time.get_ticks_msec() >= _retry_at:
+		_retry_at = 0
+		if _url != "":
+			_open_socket()
 	if synced and is_instance_valid(root):
 		_push_local_changes()
 	if is_live():
 		doc.poll()
+		if Time.get_ticks_msec() - _last_ping > 20000:
+			_last_ping = Time.get_ticks_msec()
+			_send({"t": "ping"})
 	var now_ms := Time.get_ticks_msec()
 	if share_files and is_live() and now_ms - _last_tick > 1000:
 		_last_tick = now_ms
@@ -188,8 +235,14 @@ func _hello() -> void:
 
 func _on_msg(m: Dictionary) -> void:
 	match m.get("t", ""):
+		"error":
+			if m.get("code", "") == "room_taken" and _create:
+				room = random_code()
+				room_changed.emit(room)
+				_send({"t": "join", "room": room, "name": my_name, "create": true})
 		"welcome":
 			_joined = true
+			_create = false
 			my_id = int(m.id)
 			my_color = Color.html(str(m.color))
 			status_changed.emit("Connected to room " + room)
