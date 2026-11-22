@@ -9,7 +9,7 @@ const OT := preload("res://addons/gamesync/ot.gd")
 var core
 var dock: VBoxContainer
 ## The GameSync server everyone uses unless they pick their own.
-const DEFAULT_SERVER := "ws://localhost:8787"
+const DEFAULT_SERVER := "wss://gamesync-yggk.onrender.com"
 
 var url_edit: LineEdit
 var room_edit: LineEdit

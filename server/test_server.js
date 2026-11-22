@@ -105,6 +105,11 @@ const S = "res://main.tscn";
   const del = await b.next("fdel");
   check(del && rooms.get("r1").files.size === 0 && rooms.get("r1").bytes === 0, "delete reaches B and frees space");
 
+  // Two seeds at once: the late one gets the room's copy back.
+  b.send({ t: "seed", scene: S, nodes: { ".": { cls: "Node2D", inst: "", props: {} } } });
+  const back = await b.next("state");
+  check(back && back.nodes && back.nodes["."], "a late scene upload gets the room's copy back");
+
   // Create room: a taken code is refused, a free one works.
   const x = await client("Creator", "r1");   // r1 already has people, but plain join is fine
   check(!!(await x.next("welcome")), "joining an existing room by code works");

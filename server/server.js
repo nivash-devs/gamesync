@@ -126,7 +126,12 @@ function handle(peer, msg) {
     }
     case "seed": {
       // First person in a scene uploads it.
-      if (!isStr(msg.scene) || !isObj(msg.nodes) || room.scenes.has(msg.scene)) return;
+      if (!isStr(msg.scene) || !isObj(msg.nodes)) return;
+      // Two people uploaded at the same moment: the second one gets the room's copy.
+      if (room.scenes.has(msg.scene)) {
+        send(peer.ws, { t: "state", scene: msg.scene, nodes: Object.fromEntries(room.scenes.get(msg.scene)) });
+        return;
+      }
       room.scenes.set(msg.scene, new Map(Object.entries(msg.nodes)));
       break;
     }
