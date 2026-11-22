@@ -60,6 +60,7 @@ godot --headless --path tests/proj --script res://test_sync.gd    # 21
 godot --headless --path tests/proj --script res://test_files.gd   # 19
 godot --headless --path tests/proj --script res://test_docs.gd    # 33
 godot --headless --path tests/proj --script res://test_reconnect.gd   # 9, starts its own server on 8798
+godot --headless --path tests/proj --script res://test_text_fast.gd   # 7
 ```
 
 Verified in real editor windows: scene moves, empty-project join, live script typing,

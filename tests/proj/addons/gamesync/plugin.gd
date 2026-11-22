@@ -231,11 +231,24 @@ func _apply_remote_text(new_text: String, op: Array) -> void:
 	var off := _offset_of(old, ce.get_caret_line(), ce.get_caret_column())
 	var new_off := OT.map_offset(off, op)
 	var scroll := ce.scroll_vertical
-	ce.text = new_text
+	_set_text_fast(ce, old, new_text)
 	var lc := _line_col_of(new_text, new_off)
 	ce.set_caret_line(lc[0], false)
 	ce.set_caret_column(lc[1], false)
 	ce.scroll_vertical = scroll
+
+
+## Replacing the whole text makes Godot re-color the whole script, which lags.
+## When the line count is the same (typing inside lines), only touch changed lines.
+static func _set_text_fast(ce: CodeEdit, old: String, new_text: String) -> void:
+	var a := old.split("\n")
+	var b := new_text.split("\n")
+	if a.size() != b.size() or ce.get_line_count() != b.size() or new_text.contains("\r"):
+		ce.text = new_text
+		return
+	for i in b.size():
+		if a[i] != b[i]:
+			ce.set_line(i, b[i])
 
 
 static func _offset_of(text: String, line: int, col: int) -> int:

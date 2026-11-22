@@ -44,6 +44,9 @@ var _retry_at := 0
 var _last_ping := 0
 var _last_doc_poll := 0
 var _reconnecting := false
+var _last_push := 0
+var _unsaved_pending := false
+var _last_unsaved := 0
 var msg_count := 0            # goes up with every message from the room, so the UI knows when to redraw
 
 
@@ -189,8 +192,15 @@ func poll() -> void:
 		_retry_at = 0
 		if _url != "":
 			_open_socket()
-	if synced and is_instance_valid(root):
+	# Dragging changes a node every frame. 20 updates a second looks smooth
+	# and keeps everyone's editor from doing 60 rounds of work a second.
+	if synced and is_instance_valid(root) and Time.get_ticks_msec() - _last_push >= 50:
+		_last_push = Time.get_ticks_msec()
 		_push_local_changes()
+	if _unsaved_pending and Time.get_ticks_msec() - _last_unsaved >= 500:
+		_unsaved_pending = false
+		_last_unsaved = Time.get_ticks_msec()
+		_mark_unsaved()
 	if is_live():
 		# Reading the whole script costs time, so ~30 times a second is plenty.
 		if Time.get_ticks_msec() - _last_doc_poll >= 33:
@@ -377,7 +387,12 @@ func _make(cls: String, inst: String) -> Node:
 
 
 ## Lets the editor know the scene changed so it can be saved.
+## Done at most twice a second from poll(): each call refreshes the editor's tabs.
 func _touched() -> void:
+	_unsaved_pending = true
+
+
+func _mark_unsaved() -> void:
 	if Engine.is_editor_hint() and Engine.has_singleton("EditorInterface"):
 		var ei = Engine.get_singleton("EditorInterface")
 		if ei and ei.has_method("mark_scene_as_unsaved"):
