@@ -13,8 +13,16 @@ const WAKE_TIMEOUT_MS := 100000   # free hosting can take ~1 minute to wake up
 const PROPS := [
 	"position", "rotation", "scale", "skew", "visible", "modulate", "self_modulate",
 	"z_index", "texture", "flip_h", "flip_v", "frame", "centered", "offset",
-	"text", "size", "color",
+	"text", "size", "color", "shape", "disabled", "one_way_collision",
 ]
+# Collision shapes live inside the scene, so we send their numbers, not a file path.
+const SHAPE_PROPS := {
+	"RectangleShape2D": ["size"], "CircleShape2D": ["radius"], "CapsuleShape2D": ["radius", "height"],
+	"SegmentShape2D": ["a", "b"], "SeparationRayShape2D": ["length", "slide_on_slope"],
+	"WorldBoundaryShape2D": ["normal", "distance"],
+	"BoxShape3D": ["size"], "SphereShape3D": ["radius"], "CapsuleShape3D": ["radius", "height"],
+	"CylinderShape3D": ["radius", "height"], "SeparationRayShape3D": ["length", "slide_on_slope"],
+}
 
 const FileSync := preload("res://addons/gamesync/file_sync.gd")
 const DocSync := preload("res://addons/gamesync/doc_sync.gd")
@@ -334,6 +342,10 @@ func _apply_set(path: String, props: Dictionary) -> void:
 		return
 	for k in props.keys():
 		if k in PROPS and k in node:
+			var e = props[k]
+			if e is Array and e.size() == 3 and str(e[0]) == "sh":
+				_set_shape(node, k, e)
+				continue
 			var ok := [true]
 			var v = _dec(props[k], ok)
 			if ok[0]:
@@ -341,6 +353,24 @@ func _apply_set(path: String, props: Dictionary) -> void:
 	if snap.has(path):
 		snap[path].props = _props(node)
 	_touched()
+
+
+## Resizes the node's own shape in place, or gives it a new one of the right kind.
+static func _set_shape(node: Node, k: String, e: Array) -> void:
+	var cls := str(e[1])
+	if not SHAPE_PROPS.has(cls) or not (e[2] is Dictionary):
+		return
+	var cur = node.get(k)
+	var embedded: bool = cur is Resource and (cur.resource_path == "" or cur.resource_path.contains("::"))
+	if not (embedded and cur.get_class() == cls):
+		cur = ClassDB.instantiate(cls)
+		node.set(k, cur)
+	for sk in SHAPE_PROPS[cls]:
+		if e[2].has(sk):
+			var ok := [true]
+			var v = _dec(e[2][sk], ok)
+			if ok[0]:
+				cur.set(sk, v)
 
 
 func _apply_add(path: String, cls: String, inst: String, props: Dictionary) -> void:
@@ -489,6 +519,13 @@ static func _enc(v):
 		TYPE_OBJECT:
 			if v is Resource and v.resource_path.begins_with("res://") and not v.resource_path.contains("::"):
 				return ["r", v.resource_path]
+			if v is Resource and SHAPE_PROPS.has(v.get_class()):
+				var d := {}
+				for sk in SHAPE_PROPS[v.get_class()]:
+					var e = _enc(v.get(sk))
+					if e != null:
+						d[sk] = e
+				return ["sh", v.get_class(), d]
 	return null
 
 
@@ -510,7 +547,7 @@ static func _dec(e, ok: Array):
 			var path := str(e[1])
 			if path.begins_with("res://") and ResourceLoader.exists(path):
 				var res = load(path)
-				if res is Texture2D:
+				if res is Texture2D or res is Shape2D or res is Shape3D:
 					return res
 	ok[0] = false
 	return null

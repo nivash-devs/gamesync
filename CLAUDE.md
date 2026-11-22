@@ -56,7 +56,7 @@ addons/gamesync/  ── WebSocket ──>  server/server.js  <── auto-deplo
 ```
 cd server && npm test                         # 20000 OT fuzz pairs + 42 server tests
 PORT=8799 node server.js                      # in another terminal, then:
-godot --headless --path tests/proj --script res://test_sync.gd    # 21
+godot --headless --path tests/proj --script res://test_sync.gd    # 25
 godot --headless --path tests/proj --script res://test_files.gd   # 23
 godot --headless --path tests/proj --script res://test_docs.gd    # 33
 godot --headless --path tests/proj --script res://test_reconnect.gd   # 9, starts its own server on 8798

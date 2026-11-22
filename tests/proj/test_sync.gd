@@ -29,6 +29,11 @@ func make_friend(who: String, scene: Node) -> Object:
 	return c
 
 
+func _box_is(root: Node, size: Vector2) -> bool:
+	var n = root.get_node_or_null("Hitbox")
+	return n is CollisionShape2D and n.shape is RectangleShape2D and n.shape.size == size
+
+
 func pump(frames: int = 20) -> void:
 	for i in frames:
 		for c in cores:
@@ -95,6 +100,25 @@ func _run() -> void:
 	# Texture resource by path.
 	ap.texture = load("res://icon.svg")
 	await wait_for(func(): return b_root.get_node("Player").texture != null and b_root.get_node("Player").texture.resource_path == "res://icon.svg", "texture syncs by file path")
+
+	# Collision shapes: dragging a handle changes the shape's size and the node's position together.
+	var col := CollisionShape2D.new()
+	col.name = "Hitbox"
+	var rect := RectangleShape2D.new()
+	rect.size = Vector2(40, 40)
+	col.shape = rect
+	a_root.add_child(col)
+	col.owner = a_root
+	await wait_for(func(): return _box_is(b_root, Vector2(40, 40)), "A adds a box collision shape, B gets it with its size")
+	var b_shape = b_root.get_node("Hitbox").shape
+	rect.size = Vector2(90, 30)
+	col.position = Vector2(-25, 5)
+	await wait_for(func(): return _box_is(b_root, Vector2(90, 30)) and b_root.get_node("Hitbox").position == Vector2(-25, 5), "A resizes the shape, B gets the new size and position")
+	check(b_root.get_node("Hitbox").shape == b_shape, "B's shape is resized in place, not replaced")
+	var circ := CircleShape2D.new()
+	circ.radius = 33
+	b_root.get_node("Hitbox").shape = circ
+	await wait_for(func(): return col.shape is CircleShape2D and is_equal_approx(col.shape.radius, 33.0), "B swaps it for a circle, A gets the circle")
 
 	# Presence / selection.
 	b.set_selection(["Enemy"])
