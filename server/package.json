@@ -9,7 +9,7 @@
   },
   "keywords": [],
   "author": "",
-  "license": "UNLICENSED",
+  "license": "ISC",
   "dependencies": {
     "ws": "^8.23.0"
   },
