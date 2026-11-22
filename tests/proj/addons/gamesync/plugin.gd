@@ -24,6 +24,10 @@ var peer_list: ItemList
 var _resync_pending := false
 var _code_edit: CodeEdit = null
 var _cursor_layer: Control = null
+var _seen_msgs := -1           # redraw the 2D overlay only when the room sent something
+var _cursor_sig := 0           # redraw friends' cursors only when they or the view changed
+var _caret := Vector2i(-1, -1)
+var _caret_text_len := -1
 
 
 func _enter_tree() -> void:
@@ -103,9 +107,15 @@ func _process(_delta: float) -> void:
 		_track_script_editor()
 	core.poll()
 	if core.is_live():
-		update_overlays()
-		if is_instance_valid(_cursor_layer):
-			_cursor_layer.queue_redraw()
+		# Redrawing every frame makes the editor slow, so only redraw on changes.
+		if core.msg_count != _seen_msgs:
+			_seen_msgs = core.msg_count
+			update_overlays()
+		if is_instance_valid(_cursor_layer) and is_instance_valid(_code_edit):
+			var sig := hash([core.doc.cursors, _code_edit.scroll_vertical, _code_edit.scroll_horizontal, _code_edit.get_line_count(), _code_edit.size])
+			if sig != _cursor_sig:
+				_cursor_sig = sig
+				_cursor_layer.queue_redraw()
 
 
 ## Follow whichever script is open in the script editor and live-edit it.
@@ -124,7 +134,12 @@ func _track_script_editor() -> void:
 	if rel != core.doc.path:
 		core.open_doc(rel)
 	if is_instance_valid(ce) and core.doc.is_open():
-		core.doc.my_cursor = _offset_of(ce.text, ce.get_caret_line(), ce.get_caret_column())
+		# Copying the whole script every frame is slow, so only when the caret moved or text changed.
+		var caret := Vector2i(ce.get_caret_line(), ce.get_caret_column())
+		if caret != _caret or core.doc.last_text.length() != _caret_text_len:
+			_caret = caret
+			_caret_text_len = core.doc.last_text.length()
+			core.doc.my_cursor = _offset_of(ce.text, caret.x, caret.y)
 
 
 ## Hook into a script editor: our own Ctrl+Z, and a layer to draw friends' cursors on.

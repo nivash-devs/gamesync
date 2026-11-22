@@ -42,6 +42,8 @@ var _create := false
 var _first_try_ms := 0
 var _retry_at := 0
 var _last_ping := 0
+var _last_doc_poll := 0
+var msg_count := 0            # goes up with every message from the room, so the UI knows when to redraw
 
 
 static func random_code() -> String:
@@ -175,7 +177,10 @@ func poll() -> void:
 	if synced and is_instance_valid(root):
 		_push_local_changes()
 	if is_live():
-		doc.poll()
+		# Reading the whole script costs time, so ~30 times a second is plenty.
+		if Time.get_ticks_msec() - _last_doc_poll >= 33:
+			_last_doc_poll = Time.get_ticks_msec()
+			doc.poll()
 		if Time.get_ticks_msec() - _last_ping > 20000:
 			_last_ping = Time.get_ticks_msec()
 			_send({"t": "ping"})
@@ -234,6 +239,7 @@ func _hello() -> void:
 # ---------------------------------------------------------------- incoming
 
 func _on_msg(m: Dictionary) -> void:
+	msg_count += 1
 	match m.get("t", ""):
 		"error":
 			if m.get("code", "") == "room_taken" and _create:
