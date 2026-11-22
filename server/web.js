@@ -61,7 +61,9 @@ h1 { font-size: 28px; margin: 0 0 6px; }
 .btn { display: block; text-align: center; background: #478cbf; color: #fff; text-decoration: none; font-weight: 600;
   padding: 14px 18px; border-radius: 10px; margin: 0 0 22px; }
 .btn:hover { background: #5a9fd1; }
-ol { padding-left: 20px; margin: 0 0 18px; }
+h2 { font-size: 19px; margin: 30px 0 10px; }
+.sub { color: #9aa0a6; font-size: 14px; margin: 10px 0 6px; }
+ol, ul { padding-left: 20px; margin: 0 0 18px; }
 li { margin-bottom: 8px; }
 .muted { color: #9aa0a6; font-size: 14px; }
 a { color: #6fb6ff; }
@@ -91,7 +93,48 @@ function homePage() {
 <h1>GameSync</h1>
 <p>Build Godot games with friends, live. Move a node, they see it. Type in a script, they see that too.</p>
 <a class="btn" href="/plugin/GameSync-plugin.zip" download>Download the plugin</a>
-<p class="muted">Got an invite link? Just open it.</p>`);
+
+<h2>Start a room</h2>
+<ol>
+  <li>Get <a href="https://godotengine.org/download">Godot</a> 4.2 or newer. Everyone should use the same version.</li>
+  <li>Download the plugin above and unzip it.</li>
+  <li>Put the <b>addons</b> folder in your project folder. Already have one? Put <b>gamesync</b> inside it.</li>
+  <li>In Godot: <b>Project &gt; Project Settings &gt; Plugins</b>, turn on GameSync.</li>
+  <li>The GameSync tab shows up on the right. Type your name, click <b>Create room</b>.</li>
+  <li>Click <b>Copy invite link</b> and send it to your friends.</li>
+</ol>
+
+<h2>Join a friend</h2>
+<p class="sub">With an invite link</p>
+<ol>
+  <li>Open the link and click <b>Download project</b>.</li>
+  <li>In Godot's Project Manager, click <b>Import</b> and pick the zip.</li>
+  <li>Click <b>Import &amp; Edit</b>. You join by yourself and their project downloads.</li>
+</ol>
+<p class="sub">With a room code</p>
+<ol>
+  <li>Install the plugin in your project (steps 2 to 4 above).</li>
+  <li>In the GameSync tab, type your name and the code, click <b>Join</b>.</li>
+</ol>
+
+<h2>While you're in a room</h2>
+<ul>
+  <li>Scenes, scripts, images, sounds and other project files sync live.</li>
+  <li>You see friends' selections in the 2D view and their cursors in scripts.</li>
+  <li>Ctrl+Z only undoes your own edits.</li>
+  <li>When you join, the room's files replace yours. Your old copies are saved in <b>user://gamesync_backup</b>.</li>
+  <li>Never shared: <b>.godot</b>, <b>addons</b>, <b>project.godot</b>, files over 8 MB.</li>
+  <li>Click <b>Leave</b> when you're done. Your project stays on your computer.</li>
+</ul>
+
+<h2>If something's off</h2>
+<ul>
+  <li><b>"Waking up the server"</b>: the free server sleeps when nobody uses it. The first connect can take about a minute.</li>
+  <li><b>"Connection lost, reconnecting"</b>: GameSync gets you back into the same room by itself.</li>
+  <li><b>Room is gone</b>: rooms close when everyone leaves. Create a new one.</li>
+  <li><b>Scene not showing for friends</b>: save it first so it has a file name.</li>
+</ul>
+<p class="muted">Free and open source (MIT). <a href="https://github.com/nivash-devs/gamesync">GitHub</a></p>`);
 }
 
 // Returns true if it handled the request.

@@ -13,7 +13,9 @@ const EXTS := [
 	"png", "jpg", "jpeg", "svg", "webp", "bmp",
 	"wav", "ogg", "mp3", "ttf", "otf", "json", "txt", "md", "csv",
 ]
-const SKIP_DIRS := ["res://.godot", "res://addons", "res://.git", "res://.import"]
+# Already compressed inside, gzip won't make these smaller.
+const PACKED_EXTS := ["png", "jpg", "jpeg", "webp", "ogg", "mp3"]
+const SKIP_DIRS :=["res://.godot", "res://addons", "res://.git", "res://.import"]
 
 var base := "res://"                  # tests point this somewhere else
 var backup_dir := "user://gamesync_backup"
@@ -74,7 +76,14 @@ func _on_file(m: Dictionary) -> void:
 		_done_one()
 		return
 	var data := Marshalls.base64_to_raw(str(m.get("data", "")))
+	if m.get("z", false):
+		# Only files over 256 bytes get gzipped, so empty here means it didn't unpack.
+		data = data.decompress_dynamic(MAX_FILE, FileAccess.COMPRESSION_GZIP)
+		if data.is_empty():
+			_done_one()
+			return
 	if data.size() > MAX_FILE:
+		_done_one()
 		return
 	if FileAccess.file_exists(path) and _skipped(path):
 		_done_one()
@@ -149,7 +158,18 @@ func _upload(p: String) -> void:
 	var data := FileAccess.get_file_as_bytes(p)
 	if data.size() > MAX_FILE:
 		return
-	send.call({"t": "fput", "path": _rel(p), "md5": index[p].md5, "data": Marshalls.raw_to_base64(data)})
+	var msg := {"t": "fput", "path": _rel(p), "md5": index[p].md5}
+	msg.merge(pack(data, p.get_extension().to_lower()))
+	send.call(msg)
+
+
+## Gzips scripts, scenes and other text-like files when that makes them smaller.
+static func pack(data: PackedByteArray, ext: String) -> Dictionary:
+	if data.size() > 256 and not ext in PACKED_EXTS:
+		var z := data.compress(FileAccess.COMPRESSION_GZIP)
+		if z.size() < data.size() * 0.9:
+			return {"data": Marshalls.raw_to_base64(z), "z": 1}
+	return {"data": Marshalls.raw_to_base64(data)}
 
 
 func _rel(p: String) -> String:

@@ -155,7 +155,7 @@ func poll() -> void:
 	if st != _last_state:
 		_last_state = st
 		if st == WebSocketPeer.STATE_OPEN:
-			_send({"t": "join", "room": room, "name": my_name, "create": _create})
+			_send({"t": "join", "room": room, "name": my_name, "create": _create, "gz": true})
 		elif st == WebSocketPeer.STATE_CLOSED:
 			var never_joined := not _joined
 			var now_ms := Time.get_ticks_msec()
@@ -270,7 +270,7 @@ func _on_msg(m: Dictionary) -> void:
 			if m.get("code", "") == "room_taken" and _create:
 				room = random_code()
 				room_changed.emit(room)
-				_send({"t": "join", "room": room, "name": my_name, "create": true})
+				_send({"t": "join", "room": room, "name": my_name, "create": true, "gz": true})
 		"welcome":
 			_joined = true
 			_create = false

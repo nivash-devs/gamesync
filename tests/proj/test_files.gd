@@ -108,6 +108,17 @@ func _run() -> void:
 	DirAccess.remove_absolute(A + "/notes.txt")
 	await wait_for(func(): return read(B + "/notes.txt") == "<missing>", "A deletes a file, B's copy goes too")
 
+	# Gzip: big text files travel packed and arrive exactly the same.
+	var FileSync := preload("res://addons/gamesync/file_sync.gd")
+	var big := "extends Node\n" + "func f():\n\tprint(\"gamesync\")\n".repeat(300)
+	var packed: Dictionary = FileSync.pack(big.to_utf8_buffer(), "gd")
+	check(packed.get("z", 0) == 1 and packed.data.length() < big.length() / 5, "big script gets gzipped and much smaller")
+	check(not FileSync.pack(big.to_utf8_buffer(), "png").has("z") and not FileSync.pack("tiny".to_utf8_buffer(), "gd").has("z"), "images and tiny files are sent as they are")
+	write(A + "/big.gd", big)
+	await wait_for(func(): return read(B + "/big.gd") == big, "A saves a big script, B gets it exactly")
+	b.files.on_msg({"t": "file", "path": "junk.gd", "md5": "x", "z": 1, "data": Marshalls.utf8_to_base64("not gzip")})
+	check(read(B + "/junk.gd") == "<missing>", "broken gzip data is ignored")
+
 	# No ping-pong: things settle.
 	await pump(150)
 	var sent_before: int = _count_files(A) + _count_files(B)

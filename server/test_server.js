@@ -5,7 +5,7 @@ const { server, rooms } = require("./server");
 let passed = 0, failed = 0;
 const check = (c, label) => { c ? passed++ : failed++; console.log((c ? "ok   " : "FAIL ") + label); };
 
-function client(name, room = "r1") {
+function client(name, room = "r1", extra = {}) {
   const ws = new WebSocket(`ws://127.0.0.1:${server.address().port}`);
   const inbox = [];
   ws.on("message", (d) => inbox.push(JSON.parse(d.toString())));
@@ -24,7 +24,7 @@ function client(name, room = "r1") {
     },
     async none(t, ms = 200) { await new Promise((r) => setTimeout(r, ms)); return !inbox.some((m) => m.t === t); },
   };
-  return new Promise((res) => ws.on("open", () => { c.send({ t: "join", room, name }); res(c); }));
+  return new Promise((res) => ws.on("open", () => { c.send({ t: "join", room, name, ...extra }); res(c); }));
 }
 
 const S = "res://main.tscn";
@@ -105,6 +105,30 @@ const S = "res://main.tscn";
   const del = await b.next("fdel");
   check(del && rooms.get("r1").files.size === 0 && rooms.get("r1").bytes === 0, "delete reaches B and frees space");
 
+  // Gzip: new plugins send and get files packed, old plugins still get plain files.
+  const zlib = require("zlib");
+  const g = await client("Packer", "r1", { gz: true });
+  await g.next("welcome");
+  const text = "func _ready():\n\tprint('hi')\n".repeat(100);
+  g.send({ t: "fput", path: "big.gd", md5: "m1", data: zlib.gzipSync(text).toString("base64"), z: 1 });
+  const plainGot = await b.next("file");
+  check(plainGot && !plainGot.z && Buffer.from(plainGot.data, "base64").toString() === text, "gzipped upload reaches an old plugin as a plain file");
+  a.send({ t: "fput", path: "big2.gd", md5: "m2", data: Buffer.from(text).toString("base64") });
+  const packed = await g.next("file");
+  check(packed && packed.z === 1 && zlib.gunzipSync(Buffer.from(packed.data, "base64")).toString() === text && packed.data.length < text.length / 5, "plain upload reaches a new plugin gzipped and much smaller");
+  g.send({ t: "fget", path: "big.gd" });
+  const again = await g.next("file");
+  check(again && again.z === 1 && zlib.gunzipSync(Buffer.from(again.data, "base64")).toString() === text, "downloading a file on join comes gzipped too");
+  a.send({ t: "fput", path: "pic.png", md5: "m3", data: Buffer.alloc(2000, 7).toString("base64") });
+  const pic = await g.next("file");
+  check(pic && pic.path === "pic.png" && !pic.z, "images are sent as they are");
+  g.send({ t: "fput", path: "bomb.gd", md5: "m4", data: zlib.gzipSync(Buffer.alloc(9 * 1024 * 1024)).toString("base64"), z: 1 });
+  await new Promise((r) => setTimeout(r, 100));
+  check(!rooms.get("r1").files.has("bomb.gd"), "a gzip that unpacks past 8 MB is refused");
+  for (const p of ["big.gd", "big2.gd", "pic.png"]) a.send({ t: "fdel", path: p });
+  g.ws.close();
+  await new Promise((r) => setTimeout(r, 100));
+
   // Two seeds at once: the late one gets the room's copy back.
   b.send({ t: "seed", scene: S, nodes: { ".": { cls: "Node2D", inst: "", props: {} } } });
   const back = await b.next("state");
@@ -131,7 +155,7 @@ const S = "res://main.tscn";
   // Leaving.
   b.ws.close();
   let p2;
-  for (let i = 0; i < 5; i++) { p2 = await a.next("presence"); if (p2 && p2.peers.length === 2) break; }
+  for (let i = 0; i < 20; i++) { p2 = await a.next("presence"); if (p2 && p2.peers.length === 2) break; }
   check(p2 && !p2.peers.some((p) => p.name === "Arjun"), "B leaves, others see it");
   a.ws.close(); c.ws.close();
   await new Promise((r) => setTimeout(r, 100));

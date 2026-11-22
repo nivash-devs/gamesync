@@ -6,6 +6,7 @@
 const http = require("http");
 const { WebSocketServer } = require("ws");
 const crypto = require("crypto");
+const zlib = require("zlib");
 const OT = require("./ot");
 const { handleWeb } = require("./web");
 
@@ -37,6 +38,28 @@ const MAX_LOG = 2000;
 const md5 = (str) => crypto.createHash("md5").update(str, "utf8").digest("hex");
 const docText = (doc) => doc.chars.join("");
 const isRel = (p) => isStr(p, 300) && !p.includes("..") && !p.includes(":") && !p.includes("\\") && !p.startsWith("/");
+
+// Files travel gzipped to plugins that say they can unpack it ("gz" on join).
+// The room keeps the plain copy so older plugins and live scripts still work.
+const MAX_FILE_RAW = 8 * 1024 * 1024;
+const PACKED_EXTS = ["png", "jpg", "jpeg", "webp", "ogg", "mp3"];
+
+function gzOf(path, f) {
+  if (f.gz === undefined) {
+    f.gz = "";
+    const raw = Buffer.from(f.data, "base64");
+    if (raw.length > 256 && !PACKED_EXTS.includes(path.split(".").pop().toLowerCase())) {
+      const z = zlib.gzipSync(raw);
+      if (z.length < raw.length * 0.9) f.gz = z.toString("base64");
+    }
+  }
+  return f.gz;
+}
+
+function fileMsg(to, path, f, extra = {}) {
+  const gz = to.gz ? gzOf(path, f) : "";
+  return gz ? { t: "file", path, md5: f.md5, data: gz, z: 1, ...extra } : { t: "file", path, md5: f.md5, data: f.data, ...extra };
+}
 
 function send(ws, msg) {
   if (ws.readyState === 1) ws.send(JSON.stringify(msg));
@@ -97,6 +120,7 @@ function handle(peer, msg) {
     peer.roomCode = msg.room;
     peer.room = getRoom(msg.room);
     peer.name = msg.name;
+    peer.gz = msg.gz === true;
     peer.color = COLORS[peer.room.peers.size % COLORS.length];
     peer.room.peers.set(peer.id, peer);
     send(peer.ws, { t: "welcome", id: peer.id, color: peer.color });
@@ -175,25 +199,32 @@ function handle(peer, msg) {
       const f = room.files.get(msg.path);
       if (doc) {
         const text = docText(doc);
-        send(peer.ws, { t: "file", path: msg.path, md5: md5(text), data: Buffer.from(text, "utf8").toString("base64") });
-      } else if (f) send(peer.ws, { t: "file", path: msg.path, md5: f.md5, data: f.data });
+        send(peer.ws, fileMsg(peer, msg.path, { md5: md5(text), data: Buffer.from(text, "utf8").toString("base64") }));
+      } else if (f) send(peer.ws, fileMsg(peer, msg.path, f));
       else send(peer.ws, { t: "file", path: msg.path, md5: "", data: "", missing: true });
       break;
     }
     case "fput": {
       if (!isRel(msg.path) || typeof msg.data !== "string" || msg.data.length > MAX_FILE_B64 || !isStr(msg.md5, 64)) return;
+      const entry = { md5: msg.md5, data: msg.data };
+      if (msg.z === 1) {
+        try {
+          entry.data = zlib.gunzipSync(Buffer.from(msg.data, "base64"), { maxOutputLength: MAX_FILE_RAW }).toString("base64");
+          entry.gz = msg.data;
+        } catch { return; }   // broken, or unpacks to more than 8 MB
+      }
       // Someone is live-editing this script: their edits win over a saved file.
       if (room.docs.has(msg.path)) {
         if (docSubscribers(room, msg.path).length > 0) return;
         room.docs.delete(msg.path);
       }
       const old = room.files.get(msg.path);
-      const delta = msg.data.length - (old ? old.data.length : 0);
+      const delta = entry.data.length - (old ? old.data.length : 0);
       if (room.bytes + delta > MAX_ROOM_BYTES) return;
       room.bytes += delta;
-      room.files.set(msg.path, { md5: msg.md5, data: msg.data });
+      room.files.set(msg.path, entry);
       for (const p of room.peers.values()) {
-        if (p.id !== peer.id) send(p.ws, { t: "file", path: msg.path, md5: msg.md5, data: msg.data, from: peer.id });
+        if (p.id !== peer.id) send(p.ws, fileMsg(p, msg.path, entry, { from: peer.id }));
       }
       break;
     }

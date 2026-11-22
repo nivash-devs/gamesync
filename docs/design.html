@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GameSync Data Flow</title>
+<style>
+:root{
+  --bg:#ffffff; --fg:#16181d; --muted:#5d6470; --line:#d9dde3; --card:#f6f7f9;
+  --blue:#2f7cf6; --orange:#f08a24; --green:#1f9d63; --purple:#8a5cf6;
+  --code:#eef1f5;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0e1014; --fg:#e8eaee; --muted:#9aa2ae; --line:#2a2f37; --card:#161a20;
+    --blue:#5b9bff; --orange:#ff9f45; --green:#3ccf8a; --purple:#a98bff; --code:#1d222a;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0e1014; --fg:#e8eaee; --muted:#9aa2ae; --line:#2a2f37; --card:#161a20;
+  --blue:#5b9bff; --orange:#ff9f45; --green:#3ccf8a; --purple:#a98bff; --code:#1d222a;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:960px;margin:0 auto;padding:40px 16px 80px}
+h1{font-size:34px;margin:0 0 6px;letter-spacing:-.5px}
+h2{font-size:22px;margin:48px 0 12px;padding-top:8px;border-top:1px solid var(--line)}
+h3{font-size:17px;margin:24px 0 6px}
+p{margin:8px 0}
+.sub{color:var(--muted);margin:0 0 24px}
+code{font:13px/1.4 ui-monospace,Consolas,monospace;background:var(--code);padding:1px 5px;border-radius:4px}
+.diagram{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;margin:16px 0}
+.diagram svg{width:100%;height:auto;display:block}
+svg text{fill:var(--fg);font-family:system-ui,"Segoe UI",sans-serif}
+svg .muted{fill:var(--muted)}
+svg .box{fill:var(--bg);stroke:var(--line);stroke-width:1.5}
+svg .srv{fill:var(--bg);stroke:var(--blue);stroke-width:2}
+.legend{display:flex;flex-wrap:wrap;gap:16px;font-size:14px;color:var(--muted);margin-top:8px}
+.legend span::before{content:"";display:inline-block;width:14px;height:4px;border-radius:2px;margin-right:6px;vertical-align:middle;background:var(--c)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin:12px 0}
+.card{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--c);border-radius:10px;padding:14px 16px}
+.card h3{margin:0 0 4px}
+.card p{font-size:14px;color:var(--muted);margin:4px 0}
+.tablewrap{overflow-x:auto;margin:12px 0}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--muted);font-weight:600}
+ol li,ul li{margin:4px 0}
+.note{font-size:14px;color:var(--muted)}
+</style>
+</head>
+<body>
+<main>
+
+<h1>GameSync data flow</h1>
+<p class="sub">How edits move between the relay server and each person's Godot project.</p>
+
+<div class="diagram">
+<svg viewBox="0 0 900 470" role="img" aria-label="Two computers connected to the GameSync server">
+  <defs>
+    <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="context-stroke"/>
+    </marker>
+  </defs>
+
+  <!-- Server -->
+  <rect class="srv" x="320" y="20" width="260" height="190" rx="12"/>
+  <text x="450" y="48" text-anchor="middle" font-size="17" font-weight="600">Relay server</text>
+  <text x="450" y="68" text-anchor="middle" font-size="12" class="muted">Render, Singapore · server.js</text>
+  <text x="340" y="98" font-size="13">rooms (in memory)</text>
+  <text x="352" y="120" font-size="12" class="muted">scenes: path → node + props</text>
+  <text x="352" y="140" font-size="12" class="muted">files: path → md5 + data</text>
+  <text x="352" y="160" font-size="12" class="muted">docs: live text + rev + op log</text>
+  <text x="352" y="180" font-size="12" class="muted">peers: name, color, selection</text>
+
+  <!-- PC A -->
+  <rect class="box" x="20" y="270" width="330" height="180" rx="12"/>
+  <text x="40" y="298" font-size="16" font-weight="600">Computer A · Godot</text>
+  <text x="40" y="324" font-size="12" class="muted">addons/gamesync</text>
+  <text x="40" y="350" font-size="13">sync_core.gd  scenes, connection</text>
+  <text x="40" y="372" font-size="13">file_sync.gd  project files</text>
+  <text x="40" y="394" font-size="13">doc_sync.gd + ot.gd  scripts</text>
+  <text x="40" y="416" font-size="13">plugin.gd  dock, cursors, boxes</text>
+  <text x="40" y="438" font-size="12" class="muted">res:// project on disk</text>
+
+  <!-- PC B -->
+  <rect class="box" x="550" y="270" width="330" height="180" rx="12"/>
+  <text x="570" y="298" font-size="16" font-weight="600">Computer B · Godot</text>
+  <text x="570" y="324" font-size="12" class="muted">addons/gamesync</text>
+  <text x="570" y="350" font-size="13">sync_core.gd  scenes, connection</text>
+  <text x="570" y="372" font-size="13">file_sync.gd  project files</text>
+  <text x="570" y="394" font-size="13">doc_sync.gd + ot.gd  scripts</text>
+  <text x="570" y="416" font-size="13">plugin.gd  dock, cursors, boxes</text>
+  <text x="570" y="438" font-size="12" class="muted">res:// project on disk</text>
+
+  <!-- A links -->
+  <path d="M120,268 L340,214" stroke="var(--blue)" stroke-width="2.5" fill="none" marker-start="url(#ah)" marker-end="url(#ah)"/>
+  <path d="M170,268 L370,214" stroke="var(--orange)" stroke-width="2.5" fill="none" marker-start="url(#ah)" marker-end="url(#ah)"/>
+  <path d="M220,268 L400,214" stroke="var(--green)" stroke-width="2.5" fill="none" marker-start="url(#ah)" marker-end="url(#ah)"/>
+  <path d="M270,268 L430,214" stroke="var(--purple)" stroke-width="2.5" fill="none" stroke-dasharray="5 4" marker-start="url(#ah)" marker-end="url(#ah)"/>
+
+  <!-- B links -->
+  <path d="M780,268 L560,214" stroke="var(--blue)" stroke-width="2.5" fill="none" marker-start="url(#ah)" marker-end="url(#ah)"/>
+  <path d="M730,268 L530,214" stroke="var(--orange)" stroke-width="2.5" fill="none" marker-start="url(#ah)" marker-end="url(#ah)"/>
+  <path d="M680,268 L500,214" stroke="var(--green)" stroke-width="2.5" fill="none" marker-start="url(#ah)" marker-end="url(#ah)"/>
+  <path d="M630,268 L470,214" stroke="var(--purple)" stroke-width="2.5" fill="none" stroke-dasharray="5 4" marker-start="url(#ah)" marker-end="url(#ah)"/>
+
+  <text x="450" y="350" text-anchor="middle" font-size="12" class="muted">one WebSocket</text>
+  <text x="450" y="368" text-anchor="middle" font-size="12" class="muted">per computer</text>
+  <text x="450" y="386" text-anchor="middle" font-size="12" class="muted">(wss://, JSON)</text>
+</svg>
+<div class="legend">
+  <span style="--c:var(--blue)">Scenes</span>
+  <span style="--c:var(--orange)">Files</span>
+  <span style="--c:var(--green)">Live scripts</span>
+  <span style="--c:var(--purple)">Presence and cursors</span>
+</div>
+</div>
+
+<p>Computers never talk to each other directly. Every change goes up to the server, which updates the room's copy and forwards it to everyone else in the room. The sender never gets its own change back.</p>
+
+<h2>The four channels</h2>
+<div class="grid">
+  <div class="card" style="--c:var(--blue)">
+    <h3>Scenes</h3>
+    <p>The open scene is snapshotted, and only the properties that changed are sent, up to 20 times a second.</p>
+    <p><code>set</code> <code>add</code> <code>remove</code></p>
+  </div>
+  <div class="card" style="--c:var(--orange)">
+    <h3>Files</h3>
+    <p>The project is scanned once a second and files are compared by MD5. Changed files are sent whole, up to 8 MB. Scripts, scenes and other text are gzipped first, usually to a quarter of the size or less.</p>
+    <p><code>fput</code> <code>fdel</code> <code>file</code></p>
+  </div>
+  <div class="card" style="--c:var(--green)">
+    <h3>Live scripts</h3>
+    <p>Typing turns into small insert and delete ops. The server orders them, and each client transforms them (OT).</p>
+    <p><code>dop</code> <code>dack</code> <code>dstate</code></p>
+  </div>
+  <div class="card" style="--c:var(--purple)">
+    <h3>Presence</h3>
+    <p>Who is in the room, their color, what they have selected, and where their text cursor is.</p>
+    <p><code>presence</code> <code>select</code> <code>dcur</code></p>
+  </div>
+</div>
+
+<h2>Joining a room</h2>
+<div class="diagram">
+<svg viewBox="0 0 900 430" role="img" aria-label="Join sequence">
+  <defs>
+    <marker id="ah2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="context-stroke"/>
+    </marker>
+  </defs>
+  <text x="180" y="28" text-anchor="middle" font-size="15" font-weight="600">Computer</text>
+  <text x="720" y="28" text-anchor="middle" font-size="15" font-weight="600">Server</text>
+  <line x1="180" y1="40" x2="180" y2="420" stroke="var(--line)" stroke-width="2"/>
+  <line x1="720" y1="40" x2="720" y2="420" stroke="var(--line)" stroke-width="2"/>
+
+  <g font-size="13">
+    <path d="M180,65 H716" stroke="var(--fg)" stroke-width="1.5" marker-end="url(#ah2)"/>
+    <text x="450" y="58" text-anchor="middle">join { room, name, create? }</text>
+    <path d="M720,105 H184" stroke="var(--fg)" stroke-width="1.5" marker-end="url(#ah2)"/>
+    <text x="450" y="98" text-anchor="middle">welcome { id, color }</text>
+
+    <path d="M180,150 H716" stroke="var(--blue)" stroke-width="1.5" marker-end="url(#ah2)"/>
+    <text x="450" y="143" text-anchor="middle">hello { scene }</text>
+    <path d="M720,190 H184" stroke="var(--blue)" stroke-width="1.5" marker-end="url(#ah2)"/>
+    <text x="450" y="183" text-anchor="middle">state { nodes }  (null = room is empty, so send yours)</text>
+    <path d="M180,230 H716" stroke="var(--blue)" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#ah2)"/>
+    <text x="450" y="223" text-anchor="middle">seed { nodes }  (only the first person)</text>
+
+    <path d="M180,275 H716" stroke="var(--orange)" stroke-width="1.5" marker-end="url(#ah2)"/>
+    <text x="450" y="268" text-anchor="middle">fhello { files: path → md5 }</text>
+    <path d="M720,315 H184" stroke="var(--orange)" stroke-width="1.5" marker-end="url(#ah2)"/>
+    <text x="450" y="308" text-anchor="middle">fstate { files: path → md5 }</text>
+    <path d="M180,360 H716" stroke="var(--orange)" stroke-width="1.5" marker-end="url(#ah2)"/>
+    <text x="450" y="353" text-anchor="middle">fget for files that differ · fput for files only you have</text>
+    <path d="M720,400 H184" stroke="var(--purple)" stroke-width="1.5" marker-end="url(#ah2)"/>
+    <text x="450" y="393" text-anchor="middle">presence { peers } to everyone</text>
+  </g>
+</svg>
+</div>
+<p>The room's files win. Before a local file is overwritten, it is copied to <code>user://gamesync_backup</code>. Files that only exist locally are uploaded. Nothing local is deleted on join.</p>
+
+<h2>One edit, end to end</h2>
+<h3>Moving a node</h3>
+<ol>
+  <li>A drags <code>Player</code>. The 20 Hz snapshot sees that <code>position</code> changed.</li>
+  <li>A sends <code>set { scene, path: "Player", props: { position: ["v2", x, y] } }</code>.</li>
+  <li>The server stores it in the room's scene and forwards it to everyone who has that scene open.</li>
+  <li>B decodes the tagged value into a <code>Vector2</code> and sets it on the node. The scene is marked unsaved, at most every 0.5 s.</li>
+</ol>
+
+<h3>Typing in a script</h3>
+<ol>
+  <li>A types. About 30 times a second, a Myers diff turns the change into an op such as <code>[12, "x"]</code> (keep 12, insert "x").</li>
+  <li>A sends <code>dop { path, rev, op }</code>. Further typing is held in a buffer until the server answers.</li>
+  <li>The server transforms the op past any edits A hadn't seen yet, applies it, bumps <code>rev</code>, and replies <code>dack</code> to A and <code>dop</code> to the others.</li>
+  <li>B transforms the incoming op past its own unsent typing and applies it line by line in the CodeEdit.</li>
+</ol>
+<p class="note"><code>ot.js</code> on the server and <code>ot.gd</code> in the plugin must behave identically. The test suite fuzzes 20,000 random edit pairs to check this.</p>
+
+<h3>Saving an image or sound</h3>
+<ol>
+  <li>The once-a-second scan sees a new MD5.</li>
+  <li>A sends <code>fput { path, md5, data }</code>. Images and sounds go as they are; text files go gzipped with <code>z: 1</code>.</li>
+  <li>The server stores it (up to 300 MB per room) and sends <code>file</code> to everyone else.</li>
+  <li>B writes it into <code>res://</code> and tells the editor to rescan.</li>
+</ol>
+
+<h2>What is shared</h2>
+<div class="tablewrap">
+<table>
+  <tr><th>Shared</th><th>Never shared</th></tr>
+  <tr>
+    <td>Scripts, scenes, resources, images, sounds, fonts, text: <code>gd tscn tres res png jpg svg webp wav ogg mp3 ttf json</code> and more</td>
+    <td><code>.godot/</code>, <code>addons/</code>, <code>.git/</code>, <code>project.godot</code>, files over 8 MB</td>
+  </tr>
+  <tr>
+    <td>Scene node properties: <code>position rotation scale visible modulate z_index texture frame text size color</code> and more</td>
+    <td>Undo history (Ctrl+Z only undoes your own edits)</td>
+  </tr>
+</table>
+</div>
+
+<h2>All messages</h2>
+<div class="tablewrap">
+<table>
+  <tr><th>Message</th><th>Direction</th><th>Purpose</th></tr>
+  <tr><td><code>join</code> / <code>welcome</code> / <code>error</code></td><td>up / down / down</td><td>Enter a room. <code>create</code> is refused if the code is taken.</td></tr>
+  <tr><td><code>ping</code> / <code>pong</code></td><td>up / down</td><td>Every 20 s, so the connection isn't dropped while idle</td></tr>
+  <tr><td><code>hello</code> / <code>state</code> / <code>seed</code></td><td>up / down / up</td><td>Get the room's copy of a scene, or provide the first one</td></tr>
+  <tr><td><code>set</code> <code>add</code> <code>remove</code></td><td>both</td><td>Scene node changes</td></tr>
+  <tr><td><code>fhello</code> / <code>fstate</code></td><td>up / down</td><td>Compare file lists by MD5</td></tr>
+  <tr><td><code>fget</code> / <code>file</code></td><td>up / down</td><td>Download one file</td></tr>
+  <tr><td><code>fput</code> <code>fdel</code></td><td>up, then forwarded</td><td>Upload or delete a file</td></tr>
+  <tr><td><code>dopen</code> / <code>dstate</code> / <code>dclose</code></td><td>up / down / up</td><td>Start or stop live-editing a script</td></tr>
+  <tr><td><code>dop</code> / <code>dack</code></td><td>both / down</td><td>One text edit, and the server's confirmation of it</td></tr>
+  <tr><td><code>dcur</code></td><td>both</td><td>Text cursor position</td></tr>
+  <tr><td><code>select</code> / <code>presence</code></td><td>up / down</td><td>Selected nodes, and the list of who is in the room</td></tr>
+</table>
+</div>
+
+<h2>When things go wrong</h2>
+<ul>
+  <li><b>Server asleep:</b> the free plan sleeps after 15 minutes idle. The plugin retries every 3 s for up to 100 s while it wakes up.</li>
+  <li><b>Connection lost:</b> the plugin rejoins the same room code on its own and resends its scene and file list. A server restart (for example a redeploy) wipes all rooms, so the first person back seeds the room again.</li>
+  <li><b>Room empty:</b> when the last person leaves, the room and everything in it is deleted from memory. Each person's project on disk is the lasting copy.</li>
+  <li><b>Bad edit:</b> if an op doesn't fit, the server sends <code>dstate</code> with the full text and the client resets to it.</li>
+</ul>
+
+</main>
+</body>
+</html>

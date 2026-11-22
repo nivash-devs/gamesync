@@ -30,7 +30,7 @@ addons/gamesync/  ── WebSocket ──>  server/server.js  <── auto-deplo
     `DEFAULT_SERVER = "wss://gamesync-yggk.onrender.com"`.
   - `sync_core.gd`: connection, rooms, scene sync (snapshots ~each frame, sends only changed
     properties, tagged values like `["v2", x, y]`), wake-up retries, 20s keep-alive ping.
-  - `file_sync.gd`: project files by MD5 fingerprint. Room's files win on join (local copies
+  - `file_sync.gd`: project files by MD5 fingerprint. Text files go gzipped (`z: 1`) to plugins that send `gz: true` on join; the server keeps plain copies so older plugins still work. Room's files win on join (local copies
     backed up to `user://gamesync_backup`). Never shares `.godot/`, `addons/`, `project.godot`.
   - `doc_sync.gd` + `ot.gd`: live script editing with operational transformation (Jupiter-style:
     server orders edits, client keeps `pending` + `buffer`). Myers diff for local edits.
@@ -54,10 +54,10 @@ addons/gamesync/  ── WebSocket ──>  server/server.js  <── auto-deplo
 ## Tests (all passing at handoff)
 
 ```
-cd server && npm test                         # 20000 OT fuzz pairs + 36 server tests
+cd server && npm test                         # 20000 OT fuzz pairs + 42 server tests
 PORT=8799 node server.js                      # in another terminal, then:
 godot --headless --path tests/proj --script res://test_sync.gd    # 21
-godot --headless --path tests/proj --script res://test_files.gd   # 19
+godot --headless --path tests/proj --script res://test_files.gd   # 23
 godot --headless --path tests/proj --script res://test_docs.gd    # 33
 godot --headless --path tests/proj --script res://test_reconnect.gd   # 9, starts its own server on 8798
 godot --headless --path tests/proj --script res://test_text_fast.gd   # 7
