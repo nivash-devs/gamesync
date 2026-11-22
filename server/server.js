@@ -7,6 +7,7 @@ const http = require("http");
 const { WebSocketServer } = require("ws");
 const crypto = require("crypto");
 const OT = require("./ot");
+const { handleWeb } = require("./web");
 
 const PORT = Number(process.env.PORT) || 8787;
 const MAX_MSG = 16 * 1024 * 1024;
@@ -265,9 +266,15 @@ function handle(peer, msg) {
 }
 
 const server = http.createServer((req, res) => {
-  const out = [...rooms.entries()].map(([code, r]) => ({ room: code, people: r.peers.size }));
-  res.writeHead(200, { "content-type": "application/json" });
-  res.end(JSON.stringify({ ok: true, rooms: out.length }));
+  try {
+    if (handleWeb(req, res, { rooms: rooms.size })) return;
+  } catch (e) {
+    console.error("web error", e.message);
+    res.writeHead(500);
+    return res.end("Something went wrong.");
+  }
+  res.writeHead(404, { "content-type": "text/plain" });
+  res.end("Not found");
 });
 
 const wss = new WebSocketServer({ server, maxPayload: MAX_MSG });

@@ -64,9 +64,17 @@ func _bring_dock_to_front() -> void:
 ## open the main scene and join right away.
 func _auto_join() -> void:
 	var room := str(ProjectSettings.get_setting("gamesync/room", ""))
-	var who := str(ProjectSettings.get_setting("gamesync/name", ""))
-	if room == "" or who == "":
+	if room == "":
 		return
+	# Came from an invite link: join right away. Use a saved name, or the
+	# computer's user name, or "Friend". They can change it later.
+	var who := str(ProjectSettings.get_setting("gamesync/name", ""))
+	if who == "":
+		who = _saved_name()
+	if who == "":
+		who = OS.get_environment("USERNAME") if OS.get_environment("USERNAME") != "" else OS.get_environment("USER")
+	if who == "":
+		who = "Friend"
 	await get_tree().create_timer(1.5).timeout
 	var main_scene := str(ProjectSettings.get_setting("application/run/main_scene", ""))
 	if main_scene != "" and get_editor_interface().get_edited_scene_root() == null:
@@ -282,10 +290,15 @@ func _build_dock() -> void:
 	code_label.add_theme_font_size_override("font_size", 22)
 	room_box.add_child(code_label)
 	var hint := Label.new()
-	hint.text = "Send this code to your friends."
+	hint.text = "Send your friends the invite link."
 	room_box.add_child(hint)
 	var row2 := HBoxContainer.new()
 	room_box.add_child(row2)
+	var link_btn := Button.new()
+	link_btn.text = "Copy invite link"
+	link_btn.tooltip_text = "Friends open the link, download, and import it in Godot. No setup."
+	link_btn.pressed.connect(_copy_invite_link)
+	room_box.add_child(link_btn)
 	var copy_btn := Button.new()
 	copy_btn.text = "Copy code"
 	copy_btn.pressed.connect(func(): DisplayServer.clipboard_set(core.room))
@@ -307,6 +320,18 @@ func _build_dock() -> void:
 	peer_list.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	dock.add_child(peer_list)
 	core.room_changed.connect(_show_room)
+
+
+## Invite links point at the same server's web page: https://<server>/join/CODE
+func _invite_link() -> String:
+	var url := _server_url()
+	var web := url.replace("wss://", "https://").replace("ws://", "http://")
+	return web.trim_suffix("/") + "/join/" + str(core.room)
+
+
+func _copy_invite_link() -> void:
+	DisplayServer.clipboard_set(_invite_link())
+	status_label.text = "Invite link copied"
 
 
 func _server_url() -> String:

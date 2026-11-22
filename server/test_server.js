@@ -138,6 +138,43 @@ const S = "res://main.tscn";
   check(!rooms.has("r1"), "empty room is cleaned up");
 
   d.ws.close();
+
+  // Web pages and the ready-made project.
+  const http = require("http");
+  const fs = require("fs");
+  const path = require("path");
+  const { execSync } = require("child_process");
+  const get = (p) => new Promise((res) => http.get(`http://127.0.0.1:${server.address().port}${p}`, (r) => {
+    const chunks = []; r.on("data", (c) => chunks.push(c)); r.on("end", () => res({ status: r.statusCode, headers: r.headers, body: Buffer.concat(chunks) }));
+  }));
+  const home = await get("/");
+  check(home.status === 200 && home.body.toString().includes("GameSync"), "home page loads");
+  const health = await get("/health");
+  check(health.status === 200 && JSON.parse(health.body).ok === true, "health check answers");
+  const lower = await get("/join/k3x9p2");
+  check(lower.status === 302 && lower.headers.location === "/join/K3X9P2", "lowercase invite link redirects to the capital code");
+  const join = await get("/join/K3X9P2");
+  check(join.status === 200 && join.body.toString().includes("K3X9P2") && join.body.toString().includes("/join/K3X9P2/GameSync-K3X9P2.zip"), "join page shows the code and a download button");
+  const bad = await get("/join/%3Cscript%3E");
+  check(bad.status === 404, "junk room codes get a 404, not a page");
+  const zip = await get("/join/K3X9P2/GameSync-K3X9P2.zip");
+  const tmp = fs.mkdtempSync(path.join(require("os").tmpdir(), "gs-"));
+  fs.writeFileSync(path.join(tmp, "p.zip"), zip.body);
+  let listing = "";
+  try { execSync(`unzip -q -t ${tmp}/p.zip`); execSync(`unzip -q ${tmp}/p.zip -d ${tmp}/out`); listing = fs.readdirSync(path.join(tmp, "out")).join(","); } catch (e) { listing = "BROKEN " + e.message; }
+  check(zip.status === 200 && listing.includes("project.godot") && listing.includes("addons"), "project zip is valid with project.godot at the top");
+  const pg = fs.existsSync(path.join(tmp, "out/project.godot")) ? fs.readFileSync(path.join(tmp, "out/project.godot"), "utf8") : "";
+  check(pg.includes('room="K3X9P2"') && pg.includes("res://addons/gamesync/plugin.cfg"), "project has the room code and GameSync turned on");
+  const repoDir = path.join(__dirname, "..", "godot", "addons", "gamesync");
+  const same = fs.readdirSync(repoDir).filter((f) => f.endsWith(".gd") || f === "plugin.cfg").every((f) =>
+    fs.existsSync(path.join(tmp, "out/addons/gamesync", f)) && fs.readFileSync(path.join(repoDir, f)).equals(fs.readFileSync(path.join(tmp, "out/addons/gamesync", f))));
+  check(same, "zip has exactly the current plugin files");
+  const copySame = fs.readdirSync(repoDir).filter((f) => f.endsWith(".gd") || f === "plugin.cfg").every((f) =>
+    fs.existsSync(path.join(__dirname, "plugin", f)) && fs.readFileSync(path.join(repoDir, f)).equals(fs.readFileSync(path.join(__dirname, "plugin", f))));
+  check(copySame, "server/plugin copy matches the real plugin (run: cp ../godot/addons/gamesync/* plugin/)");
+  const plug = await get("/plugin/GameSync-plugin.zip");
+  check(plug.status === 200 && plug.body.length > 1000, "plugin download works");
+
   console.log(`passed ${passed} | failed ${failed}`);
   server.close();
   process.exit(failed ? 1 : 0);
