@@ -21,11 +21,22 @@ function crc32(buf) {
 const DOS_DATE = ((2026 - 1980) << 9) | (1 << 5) | 1;
 
 // files: [{ name: "addons/x/plugin.gd", data: Buffer }]
+// Folder entries ("addons/", "addons/x/") are added before the files, because
+// Godot's project Import only creates folders that have their own entry.
 function makeZip(files) {
+  const dirs = [];
+  for (const f of files) {
+    const parts = f.name.split("/").slice(0, -1);
+    for (let i = 1; i <= parts.length; i++) {
+      const d = parts.slice(0, i).join("/") + "/";
+      if (!dirs.includes(d)) dirs.push(d);
+    }
+  }
+  const entries = [...dirs.map((d) => ({ name: d, data: Buffer.alloc(0), dir: true })), ...files];
   const locals = [];
   const centrals = [];
   let offset = 0;
-  for (const f of files) {
+  for (const f of entries) {
     const name = Buffer.from(f.name, "utf8");
     const data = f.data;
     const crc = crc32(data);
@@ -59,7 +70,7 @@ function makeZip(files) {
     central.writeUInt16LE(0, 32);
     central.writeUInt16LE(0, 34);
     central.writeUInt16LE(0, 36);
-    central.writeUInt32LE(0, 38);
+    central.writeUInt32LE(f.dir ? 0x10 : 0, 38); // MS-DOS folder flag
     central.writeUInt32LE(offset, 42);
     centrals.push(central, name);
 
@@ -68,8 +79,8 @@ function makeZip(files) {
   const centralSize = centrals.reduce((n, b) => n + b.length, 0);
   const end = Buffer.alloc(22);
   end.writeUInt32LE(0x06054b50, 0);
-  end.writeUInt16LE(files.length, 8);
-  end.writeUInt16LE(files.length, 10);
+  end.writeUInt16LE(entries.length, 8);
+  end.writeUInt16LE(entries.length, 10);
   end.writeUInt32LE(centralSize, 12);
   end.writeUInt32LE(offset, 16);
   return Buffer.concat([...locals, ...centrals, end]);

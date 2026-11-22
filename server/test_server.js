@@ -163,6 +163,9 @@ const S = "res://main.tscn";
   let listing = "";
   try { execSync(`unzip -q -t "${tmp}/p.zip"`); execSync(`unzip -q "${tmp}/p.zip" -d "${tmp}/out"`); listing = fs.readdirSync(path.join(tmp, "out")).join(","); } catch (e) { listing = "BROKEN " + e.message; }
   check(zip.status === 200 && listing.includes("project.godot") && listing.includes("addons"), "project zip is valid with project.godot at the top");
+  let names = "";
+  try { names = execSync(`unzip -Z1 "${tmp}/p.zip"`).toString(); } catch (e) {}
+  check(names.split(/\r?\n/).includes("addons/") && names.split(/\r?\n/).includes("addons/gamesync/"), "project zip has folder entries (Godot Import needs them)");
   const pg = fs.existsSync(path.join(tmp, "out/project.godot")) ? fs.readFileSync(path.join(tmp, "out/project.godot"), "utf8") : "";
   check(pg.includes('room="K3X9P2"') && pg.includes("res://addons/gamesync/plugin.cfg"), "project has the room code and GameSync turned on");
   const repoDir = path.join(__dirname, "..", "godot", "addons", "gamesync");
