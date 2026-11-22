@@ -85,6 +85,26 @@ const S = "res://main.tscn";
   a.send({ t: "set", scene: S, path: ".", props: { visible: ["b", true] } });
   check(!!(await b.next("set")), "server survives junk and keeps working");
 
+  // Files.
+  a.send({ t: "fhello", files: {} });
+  const fs0 = await a.next("fstate");
+  check(fs0 && Object.keys(fs0.files).length === 0, "new room has no files");
+  a.send({ t: "fput", path: "art/hero.png", md5: "abc", data: "AAAA" });
+  const got = await b.next("file");
+  check(got && got.path === "art/hero.png" && got.data === "AAAA", "file upload reaches B");
+  c.send({ t: "fget", path: "art/hero.png" });
+  const got2 = await c.next("file");
+  check(got2 && got2.md5 === "abc", "anyone in the room can download it (even in another scene)");
+  b.send({ t: "fget", path: "nope.gd" });
+  const miss = await b.next("file");
+  check(miss && miss.missing === true, "asking for a missing file says so");
+  for (const bad of ["../x.gd", "/etc/passwd", "C:/x.gd", "a\\b.gd"]) a.send({ t: "fput", path: bad, md5: "x", data: "AA" });
+  await new Promise((r) => setTimeout(r, 50));
+  check(rooms.get("r1").files.size === 1, "bad file paths are refused");
+  a.send({ t: "fdel", path: "art/hero.png" });
+  const del = await b.next("fdel");
+  check(del && rooms.get("r1").files.size === 0 && rooms.get("r1").bytes === 0, "delete reaches B and frees space");
+
   // Leaving.
   b.ws.close();
   let p2;

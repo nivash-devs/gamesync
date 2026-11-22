@@ -12,13 +12,18 @@ var room_edit: LineEdit
 var name_edit: LineEdit
 var connect_btn: Button
 var status_label: Label
+var file_label: Label
 var peer_list: ItemList
+var _resync_pending := false
 
 
 func _enter_tree() -> void:
 	core = SyncCore.new()
 	core.status_changed.connect(_on_status)
 	core.peers_changed.connect(_on_peers)
+	core.files.files_changed.connect(_on_files_changed)
+	core.files.status.connect(_on_file_status)
+	get_editor_interface().get_resource_filesystem().filesystem_changed.connect(_on_filesystem_changed)
 	_build_dock()
 	add_control_to_dock(DOCK_SLOT_RIGHT_UL, dock)
 	scene_changed.connect(_on_scene_changed)
@@ -72,7 +77,8 @@ func _build_dock() -> void:
 	title.text = "GameSync"
 	dock.add_child(title)
 	url_edit = _field("Server", "ws://localhost:8787")
-	room_edit = _field("Room code", "")
+	room_edit = _field("Invite code", "")
+	room_edit.placeholder_text = "paste the code your friend sent"
 	name_edit = _field("Your name", "")
 	connect_btn = Button.new()
 	connect_btn.text = "Join"
@@ -82,6 +88,9 @@ func _build_dock() -> void:
 	status_label.text = "Not connected"
 	status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	dock.add_child(status_label)
+	file_label = Label.new()
+	file_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	dock.add_child(file_label)
 	peer_list = ItemList.new()
 	peer_list.custom_minimum_size = Vector2(0, 140)
 	peer_list.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -103,14 +112,40 @@ func _on_connect_pressed() -> void:
 		core.disconnect_from()
 		connect_btn.text = "Join"
 		return
-	var room := room_edit.text.strip_edges()
 	var who := name_edit.text.strip_edges()
-	if room == "" or who == "":
-		status_label.text = "Enter a room code and your name"
+	var target: Array = SyncCore.parse_invite(room_edit.text, url_edit.text.strip_edges())
+	if target[1] == "" or who == "":
+		status_label.text = "Paste an invite code and type your name"
 		return
 	_on_scene_changed(get_editor_interface().get_edited_scene_root())
-	core.connect_to(url_edit.text.strip_edges(), room, who)
+	core.connect_to(target[0], target[1], who)
 	connect_btn.text = "Leave"
+
+
+func _on_file_status(text: String) -> void:
+	if file_label:
+		file_label.text = text
+
+
+## New or changed files came from the room: let Godot pick them up.
+func _on_files_changed(_paths: Array) -> void:
+	_resync_pending = true
+	get_editor_interface().get_resource_filesystem().scan()
+
+
+func _on_filesystem_changed() -> void:
+	if not _resync_pending:
+		return
+	_resync_pending = false
+	# Joined with an empty project? Open whatever a friend is editing.
+	if get_editor_interface().get_edited_scene_root() == null:
+		for p in core.peers:
+			var s := str(p.get("scene", ""))
+			if s != "" and FileAccess.file_exists(s):
+				get_editor_interface().open_scene_from_path(s)
+				get_editor_interface().set_main_screen_editor("2D")
+				return
+	core.resync_scene()
 
 
 func _on_scene_changed(root: Node) -> void:

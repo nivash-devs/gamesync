@@ -7,7 +7,9 @@ const http = require("http");
 const { WebSocketServer } = require("ws");
 
 const PORT = Number(process.env.PORT) || 8787;
-const MAX_MSG = 256 * 1024;
+const MAX_MSG = 16 * 1024 * 1024;
+const MAX_FILE_B64 = 12 * 1024 * 1024;   // ~8 MB file
+const MAX_ROOM_BYTES = 300 * 1024 * 1024;
 const COLORS = ["#ff5c5c", "#4da3ff", "#3ddc84", "#ffb020", "#c77dff", "#ff7ac6", "#2ee6d6", "#f5f56a"];
 
 const rooms = new Map(); // code -> { peers: Map<id, peer>, scenes: Map<sceneKey, Map<path, node>> }
@@ -16,7 +18,7 @@ let nextId = 1;
 function getRoom(code) {
   let r = rooms.get(code);
   if (!r) {
-    r = { peers: new Map(), scenes: new Map() };
+    r = { peers: new Map(), scenes: new Map(), files: new Map(), bytes: 0 };
     rooms.set(code, r);
   }
   return r;
@@ -24,6 +26,8 @@ function getRoom(code) {
 
 const isStr = (v, max = 512) => typeof v === "string" && v.length > 0 && v.length <= max;
 const isObj = (v) => v && typeof v === "object" && !Array.isArray(v);
+// Project-relative file paths only: "player.gd", "art/hero.png".
+const isRel = (p) => isStr(p, 300) && !p.includes("..") && !p.includes(":") && !p.includes("\\") && !p.startsWith("/");
 
 function send(ws, msg) {
   if (ws.readyState === 1) ws.send(JSON.stringify(msg));
@@ -110,6 +114,42 @@ function handle(peer, msg) {
       if (!nodes) return;
       removeTree(nodes, msg.path);
       toOthers(room, peer, msg.scene, { t: "remove", scene: msg.scene, path: msg.path, from: peer.id });
+      break;
+    }
+    case "fhello": {
+      const files = {};
+      for (const [p, f] of room.files) files[p] = f.md5;
+      send(peer.ws, { t: "fstate", files });
+      break;
+    }
+    case "fget": {
+      if (!isRel(msg.path)) return;
+      const f = room.files.get(msg.path);
+      if (f) send(peer.ws, { t: "file", path: msg.path, md5: f.md5, data: f.data });
+      else send(peer.ws, { t: "file", path: msg.path, md5: "", data: "", missing: true });
+      break;
+    }
+    case "fput": {
+      if (!isRel(msg.path) || typeof msg.data !== "string" || msg.data.length > MAX_FILE_B64 || !isStr(msg.md5, 64)) return;
+      const old = room.files.get(msg.path);
+      const delta = msg.data.length - (old ? old.data.length : 0);
+      if (room.bytes + delta > MAX_ROOM_BYTES) return;
+      room.bytes += delta;
+      room.files.set(msg.path, { md5: msg.md5, data: msg.data });
+      for (const p of room.peers.values()) {
+        if (p.id !== peer.id) send(p.ws, { t: "file", path: msg.path, md5: msg.md5, data: msg.data, from: peer.id });
+      }
+      break;
+    }
+    case "fdel": {
+      if (!isRel(msg.path)) return;
+      const old = room.files.get(msg.path);
+      if (!old) return;
+      room.bytes -= old.data.length;
+      room.files.delete(msg.path);
+      for (const p of room.peers.values()) {
+        if (p.id !== peer.id) send(p.ws, { t: "fdel", path: msg.path, from: peer.id });
+      }
       break;
     }
     case "select": {

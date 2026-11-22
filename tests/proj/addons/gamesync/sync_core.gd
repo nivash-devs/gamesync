@@ -12,7 +12,11 @@ const PROPS := [
 	"text", "size", "color",
 ]
 
+const FileSync := preload("res://addons/gamesync/file_sync.gd")
+
 var ws := WebSocketPeer.new()
+var files = FileSync.new()
+var share_files := true
 var root: Node = null
 var scene_key := ""
 var room := ""
@@ -25,6 +29,8 @@ var synced := false            # true once we have the room's copy of this scene
 var _joined := false
 var _last_state := -1
 var _last_selected: Array = []
+var _file_timer := 0.0
+var _last_tick := 0
 
 
 func connect_to(url: String, room_code: String, display_name: String) -> void:
@@ -33,8 +39,10 @@ func connect_to(url: String, room_code: String, display_name: String) -> void:
 	_joined = false
 	synced = false
 	ws = WebSocketPeer.new()
-	ws.inbound_buffer_size = 1 << 20
-	ws.outbound_buffer_size = 1 << 20
+	ws.inbound_buffer_size = 16 << 20
+	ws.outbound_buffer_size = 16 << 20
+	files.reset()
+	files.send = _send
 	var err := ws.connect_to_url(url)
 	status_changed.emit("Connecting..." if err == OK else "Bad server address")
 
@@ -52,10 +60,36 @@ func is_live() -> bool:
 	return _joined and ws.get_ready_state() == WebSocketPeer.STATE_OPEN
 
 
+## Turns what someone pasted into [server url, room].
+## "abc.trycloudflare.com/4821" -> ["wss://abc.trycloudflare.com", "4821"]
+## "4821" -> [default_url, "4821"]
+static func parse_invite(text: String, default_url: String) -> Array:
+	var t := text.strip_edges()
+	if t == "":
+		return [default_url, ""]
+	var scheme := ""
+	for s in ["wss://", "ws://", "https://", "http://"]:
+		if t.begins_with(s):
+			scheme = s
+			t = t.substr(s.length())
+	var cut := t.rfind("/")
+	if cut == -1:
+		if scheme == "":
+			return [default_url, t]
+		return ["", ""]
+	var host := t.substr(0, cut)
+	var room := t.substr(cut + 1)
+	if host == "" or room == "":
+		return ["", ""]
+	var ws_scheme := "ws://" if scheme in ["ws://", "http://"] or host.begins_with("localhost") or host.begins_with("127.") or host.begins_with("192.168.") else "wss://"
+	return [ws_scheme + host, room]
+
+
 ## Call when the open scene changes. key is the scene file path.
 func set_root(node: Node, key: String) -> void:
 	root = node
 	scene_key = key
+	_update_live_scenes()
 	synced = false
 	snap = {}
 	if is_live():
@@ -91,6 +125,29 @@ func poll() -> void:
 			_on_msg(parsed)
 	if synced and is_instance_valid(root):
 		_push_local_changes()
+	var now_ms := Time.get_ticks_msec()
+	if share_files and is_live() and now_ms - _last_tick > 1000:
+		_last_tick = now_ms
+		files.poll_changes()
+
+
+## Scenes someone has open are synced node by node, not as files.
+func _update_live_scenes() -> void:
+	var live: Array = []
+	if scene_key != "":
+		live.append(scene_key.trim_prefix("res://"))
+	for p in peers:
+		var s := str(p.get("scene", ""))
+		if s != "":
+			live.append(s.trim_prefix("res://"))
+	files.skip_paths = live
+
+
+## Re-ask the room for the open scene, e.g. after new files arrived.
+func resync_scene() -> void:
+	if is_live() and root and scene_key != "":
+		synced = false
+		_hello()
 
 
 func _send(msg: Dictionary) -> void:
@@ -116,9 +173,15 @@ func _on_msg(m: Dictionary) -> void:
 			if not _last_selected.is_empty():
 				_send({"t": "select", "paths": _last_selected})
 			_hello()
+			if share_files:
+				files.start()
 		"presence":
 			peers = m.peers
+			_update_live_scenes()
 			peers_changed.emit()
+		"fstate", "file", "fdel":
+			if share_files:
+				files.on_msg(m)
 		"state":
 			if m.scene != scene_key or root == null:
 				return

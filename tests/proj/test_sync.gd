@@ -22,6 +22,7 @@ func check(cond: bool, label: String) -> void:
 func make_friend(who: String, scene: Node) -> Object:
 	get_root().add_child(scene)
 	var c = SyncCore.new()
+	c.share_files = false
 	c.set_root(scene, KEY)
 	c.connect_to(URL, "room1", who)
 	cores.append(c)
