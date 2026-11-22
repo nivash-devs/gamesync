@@ -39,6 +39,8 @@ func _auto_join() -> void:
 	if main_scene != "" and get_editor_interface().get_edited_scene_root() == null:
 		get_editor_interface().open_scene_from_path(main_scene)
 		await get_tree().process_frame
+	if get_editor_interface().get_edited_scene_root() is CanvasItem:
+		get_editor_interface().set_main_screen_editor("2D")
 	room_edit.text = room
 	name_edit.text = who
 	var url := str(ProjectSettings.get_setting("gamesync/server", ""))
