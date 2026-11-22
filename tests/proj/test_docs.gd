@@ -163,5 +163,58 @@ func _run() -> void:
 	await pump(30)
 	check(not b.text.ends_with("# still here") and c.text.ends_with("# still here"), "B moved to another script and stops getting player.gd edits")
 
+	# ---------------- undo only undoes YOUR edits
+	var u1 := make_friend("U1")
+	var u2 := make_friend("U2")
+	await wait_for(func(): return u1.core.is_live() and u2.core.is_live(), "undo test: two more friends join")
+	u1.text = "func a():\n\tpass\n"
+	u1.core.open_doc("undo.gd")
+	await wait_for(func(): return u1.core.doc.is_open(), "U1 opens undo.gd")
+	u2.core.open_doc("undo.gd")
+	await wait_for(func(): return u2.core.doc.is_open() and u2.text == u1.text, "U2 opens it too")
+	u1.core.doc._last_typed_ms = -100000
+	u1.text += "# mine\n"
+	await pump(20)
+	u2.text = "# theirs\n" + u2.text
+	await wait_for(func(): return u1.text.begins_with("# theirs") and u2.text.ends_with("# mine\n"), "both see both edits")
+	u1.core.doc.undo()
+	await wait_for(func(): return u2.text == "# theirs\nfunc a():\n\tpass\n", "U1 presses undo: only U1's line goes, for both people")
+	check(u1.text == u2.text, "texts match after undo")
+	u1.core.doc.redo()
+	await wait_for(func(): return u2.text == "# theirs\nfunc a():\n\tpass\n# mine\n", "U1 presses redo: the line comes back")
+	u2.core.doc.undo()
+	await wait_for(func(): return u1.text == "func a():\n\tpass\n# mine\n", "U2 presses undo: only U2's line goes")
+	var before_empty: String = u2.text
+	check(u2.core.doc.undo() == false and u2.text == before_empty, "U2 has nothing left to undo: pressing it again does nothing (doesn't undo U1)")
+
+	# Undo still lands right after a friend types above it.
+	u1.core.doc._last_typed_ms = -100000
+	u1.text = u1.text.replace("pass", "jump()")
+	await pump(20)
+	u2.text = "# a\n# b\n# c\n" + u2.text
+	await wait_for(func(): return u1.text.begins_with("# a"), "friend adds 3 lines above")
+	u1.core.doc.undo()
+	await wait_for(func(): return u2.text.contains("\tpass") and not u2.text.contains("jump()") and u2.text.begins_with("# a\n# b\n# c\n"), "U1's undo still hits the right spot after lines were added above")
+
+	# A typing burst undoes as one step.
+	u1.core.doc._last_typed_ms = -100000
+	var base: String = u1.text
+	for ch in "hello":
+		u1.text += ch
+		await pump(1)
+	await pump(10)
+	u1.core.doc.undo()
+	await wait_for(func(): return u2.text == base, "typing a word quickly undoes in one step")
+
+	# ---------------- cursors
+	u1.core.doc.my_cursor = 4
+	await wait_for(func(): return u2.core.doc.cursors.has(u1.core.my_id) and u2.core.doc.cursors[u1.core.my_id].off == 4, "U2 sees U1's cursor")
+	check(u2.core.doc.cursors[u1.core.my_id].name == "U1", "cursor carries U1's name")
+	u2.text = "XYZ" + u2.text
+	await pump(5)
+	check(u2.core.doc.cursors[u1.core.my_id].off == 7, "U1's cursor shifts right when U2 types before it")
+	u1.core.open_doc("")
+	await wait_for(func(): return not u2.core.doc.cursors.has(u1.core.my_id), "U1 closes the script: their cursor disappears for U2")
+
 	print("passed %d | failed %d" % [passed, failed])
 	quit(1 if failed > 0 else 0)

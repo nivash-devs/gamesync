@@ -79,6 +79,7 @@ function retireDoc(room, path) {
 
 function leaveDoc(room, peer, path) {
   if (!peer.docs.delete(path)) return;
+  for (const p of docSubscribers(room, path)) send(p.ws, { t: "dcur", path, id: peer.id, off: -1 });
   if (docSubscribers(room, path).length === 0) retireDoc(room, path);
 }
 
@@ -230,6 +231,13 @@ function handle(peer, msg) {
       send(peer.ws, { t: "dack", path: msg.path, rev: doc.rev });
       for (const p of docSubscribers(room, msg.path)) {
         if (p.id !== peer.id) send(p.ws, { t: "dop", path: msg.path, rev: doc.rev, op, from: peer.id });
+      }
+      break;
+    }
+    case "dcur": {
+      if (!isStr(msg.path) || !peer.docs.has(msg.path) || !Number.isInteger(msg.off)) return;
+      for (const p of docSubscribers(room, msg.path)) {
+        if (p.id !== peer.id) send(p.ws, { t: "dcur", path: msg.path, off: msg.off, id: peer.id, name: peer.name, color: peer.color });
       }
       break;
     }

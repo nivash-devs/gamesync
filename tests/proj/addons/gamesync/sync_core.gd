@@ -205,7 +205,7 @@ func _on_msg(m: Dictionary) -> void:
 		"fstate", "file", "fdel":
 			if share_files:
 				files.on_msg(m)
-		"dstate", "dack", "dop":
+		"dstate", "dack", "dop", "dcur":
 			doc.on_msg(m)
 		"state":
 			if m.scene != scene_key or root == null:

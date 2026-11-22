@@ -213,6 +213,20 @@ static func _steps_to_op(steps: Array, a: String, b: String, start: int) -> Arra
 	return op
 
 
+## The op that undoes `op`. `before` is the text op was applied to.
+static func invert(op: Array, before: String) -> Array:
+	var text := before
+	var inv: Array = []
+	for c in op:
+		if is_ins(c):
+			inv.push_front({"d": c.i, "n": str(c.s).length()})
+			text = text.substr(0, c.i) + str(c.s) + text.substr(c.i)
+		else:
+			inv.push_front({"i": c.d, "s": text.substr(c.d, c.n)})
+			text = text.substr(0, c.d) + text.substr(c.d + c.n)
+	return inv
+
+
 ## Where a cursor at `offset` ends up after op.
 static func map_offset(offset: int, op: Array) -> int:
 	for c in op:

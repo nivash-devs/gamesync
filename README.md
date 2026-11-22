@@ -30,6 +30,8 @@ Only share codes with people you trust: they can change your project's files.
   `user://gamesync_backup` first.
 - Scripts, live: open the same script and type at the same time, like Google Docs.
   Edits merge with operational transformation, so nobody's typing gets lost.
+- Friends' cursors in the script, in their color with their name.
+- Ctrl+Z / Ctrl+Y only undo and redo YOUR edits, never a friend's.
 - Who's online, what each person has selected (outlined in their color),
   and which script they're editing.
 

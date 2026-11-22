@@ -17,6 +17,7 @@ var file_label: Label
 var peer_list: ItemList
 var _resync_pending := false
 var _code_edit: CodeEdit = null
+var _cursor_layer: Control = null
 
 
 func _enter_tree() -> void:
@@ -27,6 +28,7 @@ func _enter_tree() -> void:
 	core.files.status.connect(_on_file_status)
 	core.doc.get_text = _editor_text
 	core.doc.set_text = _apply_remote_text
+	core.doc.set_text_own = _apply_own_undo
 	get_editor_interface().get_resource_filesystem().filesystem_changed.connect(_on_filesystem_changed)
 	_build_dock()
 	add_control_to_dock(DOCK_SLOT_RIGHT_UL, dock)
@@ -59,6 +61,7 @@ func _auto_join() -> void:
 
 
 func _exit_tree() -> void:
+	_attach_to(null)
 	if core:
 		core.disconnect_from()
 	if dock:
@@ -74,6 +77,8 @@ func _process(_delta: float) -> void:
 	core.poll()
 	if core.is_live():
 		update_overlays()
+		if is_instance_valid(_cursor_layer):
+			_cursor_layer.queue_redraw()
 
 
 ## Follow whichever script is open in the script editor and live-edit it.
@@ -87,11 +92,86 @@ func _track_script_editor() -> void:
 	var rel := ""
 	if scr and ce and scr.resource_path.begins_with("res://") and not scr.resource_path.contains("::"):
 		rel = scr.resource_path.trim_prefix("res://")
+	if ce != _code_edit:
+		_attach_to(ce)
 	if rel != core.doc.path:
-		_code_edit = ce
 		core.open_doc(rel)
-	else:
-		_code_edit = ce
+	if is_instance_valid(ce) and core.doc.is_open():
+		core.doc.my_cursor = _offset_of(ce.text, ce.get_caret_line(), ce.get_caret_column())
+
+
+## Hook into a script editor: our own Ctrl+Z, and a layer to draw friends' cursors on.
+func _attach_to(ce: CodeEdit) -> void:
+	if is_instance_valid(_code_edit) and _code_edit.gui_input.is_connected(_on_code_input):
+		_code_edit.gui_input.disconnect(_on_code_input)
+	if is_instance_valid(_cursor_layer):
+		_cursor_layer.queue_free()
+	_cursor_layer = null
+	_code_edit = ce
+	if not is_instance_valid(ce):
+		return
+	ce.gui_input.connect(_on_code_input)
+	_cursor_layer = Control.new()
+	_cursor_layer.name = "GameSyncCursors"
+	_cursor_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_cursor_layer.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_cursor_layer.draw.connect(_draw_cursors)
+	ce.add_child(_cursor_layer)
+
+
+## While live, Ctrl+Z / Ctrl+Y only undo and redo YOUR edits, not your friends'.
+## The gui_input signal fires before the editor's own undo, so we can stop it.
+func _on_code_input(ev: InputEvent) -> void:
+	if not (ev is InputEventKey) or not ev.pressed or not core.is_live() or not core.doc.is_open():
+		return
+	if ev.is_action("ui_redo", true):
+		core.doc.redo()
+		_code_edit.accept_event()
+	elif ev.is_action("ui_undo", true):
+		core.doc.undo()
+		_code_edit.accept_event()
+
+
+## Your own undo/redo: put your cursor where the change happened.
+func _apply_own_undo(new_text: String, op: Array) -> void:
+	var ce := _code_edit
+	if not is_instance_valid(ce):
+		return
+	var scroll := ce.scroll_vertical
+	ce.text = new_text
+	var spot := 0
+	if not op.is_empty():
+		var last: Dictionary = op[op.size() - 1]
+		spot = int(last.i) + str(last.s).length() if last.has("s") else int(last.d)
+	var lc := _line_col_of(new_text, spot)
+	ce.set_caret_line(lc[0])
+	ce.set_caret_column(lc[1])
+	ce.scroll_vertical = scroll
+
+
+## Friends' cursors: a thin line in their color with their name above it.
+func _draw_cursors() -> void:
+	var ce := _code_edit
+	if not is_instance_valid(ce) or not is_instance_valid(_cursor_layer) or not core.doc.is_open():
+		return
+	var text := ce.text
+	var font := ce.get_theme_font("font")
+	var size := maxi(10, int(ce.get_theme_font_size("font_size") * 0.8))
+	for id in core.doc.cursors.keys():
+		var c: Dictionary = core.doc.cursors[id]
+		var lc := _line_col_of(text, clampi(int(c.off), 0, text.length()))
+		var r: Rect2i = ce.get_rect_at_line_column(lc[0], lc[1])
+		if r.position.x < 0 or r.size.y <= 0:
+			continue   # scrolled out of view
+		var col := Color.html(str(c.color))
+		_cursor_layer.draw_rect(Rect2(r.position.x - 1, r.position.y, 2, r.size.y), col)
+		var label := str(c.name)
+		var w := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x + 8
+		var top := r.position.y - size - 4
+		if top < 0:
+			top = r.position.y + r.size.y
+		_cursor_layer.draw_rect(Rect2(r.position.x - 1, top, w, size + 4), col)
+		_cursor_layer.draw_string(font, Vector2(r.position.x + 3, top + size), label, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color.BLACK)
 
 
 func _editor_text() -> String:
