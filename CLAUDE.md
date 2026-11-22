@@ -67,7 +67,7 @@ Verified against the live Render server: rooms, scene sync, files, live scripts,
 
 ## Where things stand
 
-Done: everything above, plus an Asset Store package (`GameSync-0.2.0.zip`, 16:9 icon,
+Done: everything above, plus an Asset Store package (`GameSync-1.0.0.zip`, 16:9 icon,
 3 screenshots, listing text, MIT LICENSE). The owner still has to create the Asset Store account
 and upload (store.godotengine.org).
 
