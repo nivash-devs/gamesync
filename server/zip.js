@@ -17,6 +17,9 @@ function crc32(buf) {
   return (c ^ 0xffffffff) >>> 0;
 }
 
+// DOS date for 2026-01-01 00:00 (zip files need a real date or some tools complain).
+const DOS_DATE = ((2026 - 1980) << 9) | (1 << 5) | 1;
+
 // files: [{ name: "addons/x/plugin.gd", data: Buffer }]
 function makeZip(files) {
   const locals = [];
@@ -31,7 +34,8 @@ function makeZip(files) {
     local.writeUInt16LE(20, 4);        // version needed
     local.writeUInt16LE(0x0800, 6);    // flags: names are UTF-8
     local.writeUInt16LE(0, 8);         // stored, no compression
-    local.writeUInt32LE(0, 10);        // time/date
+    local.writeUInt16LE(0, 10);        // time
+    local.writeUInt16LE(DOS_DATE, 12); // date
     local.writeUInt32LE(crc, 14);
     local.writeUInt32LE(data.length, 18);
     local.writeUInt32LE(data.length, 22);
@@ -45,7 +49,8 @@ function makeZip(files) {
     central.writeUInt16LE(20, 6);
     central.writeUInt16LE(0x0800, 8);
     central.writeUInt16LE(0, 10);
-    central.writeUInt32LE(0, 12);
+    central.writeUInt16LE(0, 12);
+    central.writeUInt16LE(DOS_DATE, 14);
     central.writeUInt32LE(crc, 16);
     central.writeUInt32LE(data.length, 20);
     central.writeUInt32LE(data.length, 24);
