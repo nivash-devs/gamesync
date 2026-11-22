@@ -202,6 +202,18 @@ const S = "res://main.tscn";
   const plug = await get("/plugin/GameSync-plugin.zip");
   check(plug.status === 200 && plug.body.length > 1000, "plugin download works");
 
+  // Free assets
+  const ap = await get("/assets");
+  const apt = ap.body.toString();
+  check(ap.status === 200 && apt.includes("Free stuff") && apt.includes("api.openverse.org") && apt.includes("Tiny Dungeon"), "assets page loads with search and packs");
+  check(apt.includes("license=cc0,by") && !apt.includes("by-nc"), "assets search only asks for licenses you can use in a game");
+  const pk = await get("/api/packs");
+  let pj = null;
+  try { pj = JSON.parse(pk.body.toString()); } catch (e) {}
+  check(pk.status === 200 && pk.headers["access-control-allow-origin"] === "*" && pj && pj.categories.length >= 6 &&
+    pj.categories.every((c) => c.items.every((i) => i.url.startsWith("https://") && i.name && i.license && i.desc)), "packs feed is valid: every link https, with a license and description");
+  check(home.body.toString().includes('href="/assets"'), "home page links to assets");
+
   console.log(`passed ${passed} | failed ${failed}`);
   server.close();
   process.exit(failed ? 1 : 0);

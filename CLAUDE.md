@@ -35,10 +35,17 @@ addons/gamesync/  ── WebSocket ──>  server/server.js  <── auto-deplo
   - `doc_sync.gd` + `ot.gd`: live script editing with operational transformation (Jupiter-style:
     server orders edits, client keeps `pending` + `buffer`). Myers diff for local edits.
     Undo stack holds inverse ops transformed past every later edit. Friend cursors as offsets.
+  - `assets.gd` + `assets_window.gd`: the "Free assets" window (button in the dock). Sounds and
+    Music tabs search Openverse (Freesound, Jamendo; only `cc0` and `by` licenses), preview mp3/ogg,
+    and save to `res://assets/sfx|music/` with a line in `res://CREDITS.md`; file sync then shares
+    them with the room. Packs tab lists the curated sources from `/api/packs` (opens the page;
+    nothing is re-hosted, several sources forbid re-sharing files). Openverse anon limit: 20/min, 200/day per IP.
 - `server/`: Node relay. `server.js` (rooms, scenes, files, live docs, cursors), `ot.js`
   (must stay identical in behavior to `ot.gd`), `web.js` (home page, `/join/CODE` page,
   ready-made project zip with room code + plugin enabled, `/plugin/GameSync-plugin.zip`,
-  `/health`), `zip.js` (tiny zip writer). `server/plugin/` is a copy of the addon that the
+  `/health`, `/assets` page with live sound/music search, `/api/packs` JSON), `assets-data.js`
+  (curated free sources with licenses, checked 2026-11-22), `zip.js` (tiny zip writer).
+  Branding is black and white (owner's call), no blue/orange. `server/plugin/` is a copy of the addon that the
   server zips up: after changing the addon, run `cp godot/addons/gamesync/* server/plugin/`
   (a server test fails if they differ).
 - `HOST.bat` + `host.ps1`: optional self-hosting with a Cloudflare quick tunnel.
@@ -54,13 +61,15 @@ addons/gamesync/  ── WebSocket ──>  server/server.js  <── auto-deplo
 ## Tests (all passing at handoff)
 
 ```
-cd server && npm test                         # 20000 OT fuzz pairs + 42 server tests
+cd server && npm test                         # 20000 OT fuzz pairs + 46 server tests
 PORT=8799 node server.js                      # in another terminal, then:
 godot --headless --path tests/proj --script res://test_sync.gd    # 25
 godot --headless --path tests/proj --script res://test_files.gd   # 23
 godot --headless --path tests/proj --script res://test_docs.gd    # 33
 godot --headless --path tests/proj --script res://test_reconnect.gd   # 9, starts its own server on 8798
 godot --headless --path tests/proj --script res://test_text_fast.gd   # 7
+godot --headless --path tests/proj --script res://test_assets.gd  # 25, uses the server on 8799
+godot --headless --path tests/proj --script res://live_openverse.gd   # manual: real Openverse search
 ```
 
 Verified in real editor windows: scene moves, empty-project join, live script typing,

@@ -5,6 +5,7 @@ extends EditorPlugin
 
 const SyncCore := preload("res://addons/gamesync/sync_core.gd")
 const OT := preload("res://addons/gamesync/ot.gd")
+const AssetsWindow := preload("res://addons/gamesync/assets_window.gd")
 
 var core
 var dock: VBoxContainer
@@ -28,6 +29,7 @@ var _seen_msgs := -1           # redraw the 2D overlay only when the room sent s
 var _cursor_sig := 0           # redraw friends' cursors only when they or the view changed
 var _caret := Vector2i(-1, -1)
 var _caret_text_len := -1
+var _assets_win: Window = null
 
 
 func _enter_tree() -> void:
@@ -98,6 +100,9 @@ func _exit_tree() -> void:
 	if dock:
 		remove_control_from_docks(dock)
 		dock.queue_free()
+	if _assets_win:
+		_assets_win.queue_free()
+		_assets_win = null
 
 
 func _process(_delta: float) -> void:
@@ -275,6 +280,11 @@ func _build_dock() -> void:
 	title.text = "GameSync"
 	title.add_theme_font_size_override("font_size", 18)
 	dock.add_child(title)
+	var assets_btn := Button.new()
+	assets_btn.text = "Free assets"
+	assets_btn.tooltip_text = "Search free sounds and music, or browse art, pixel art and tileset packs."
+	assets_btn.pressed.connect(_open_assets)
+	dock.add_child(assets_btn)
 
 	# Before joining: name, Create room, or join with a code.
 	lobby = VBoxContainer.new()
@@ -367,6 +377,18 @@ func _server_url() -> String:
 		return url_edit.text.strip_edges()
 	var from_project := str(ProjectSettings.get_setting("gamesync/server", ""))
 	return from_project if from_project != "" else DEFAULT_SERVER
+
+
+func _open_assets() -> void:
+	if _assets_win == null:
+		_assets_win = AssetsWindow.new()
+		var url := _server_url()
+		_assets_win.web = url.replace("wss://", "https://").replace("ws://", "http://")
+		_assets_win.on_added = func(): get_editor_interface().get_resource_filesystem().scan()
+		var scale := get_editor_interface().get_editor_scale()
+		_assets_win.size = Vector2i(int(760 * scale), int(540 * scale))
+		get_editor_interface().get_base_control().add_child(_assets_win)
+	_assets_win.popup_centered()
 
 
 func _saved_name() -> String:
